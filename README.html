@@ -355,24 +355,32 @@ display: none;
 <div id="utility-report-card" class="section level1">
 <h1>2023-Utility-Report-Card</h1>
 <p>Basic “report card” for utilities produced annually early in the
-CY.</p>
+calendar year with data from the calendar year two years prior
+(e.g. 2023 report released in March uses data for the calendar year of
+2021).</p>
 <p>The code and data contained in this github repo are provided to
 encourage transparency and repurposing/modification by other parties to
 match their own purposes.</p>
-<p>Below is a detailed explanation on the data sources used to create
+<p>Below is a detailed explanation of the data sources used to create
 this document as well as the methodology used to generate the particular
 graphs that use a particular data source. Note that each graph in the
 report contains its data source, allowing anyone to search for the
 relevant section of this readme file.</p>
-<p>#DATA SOURCE EIA-176: <a href="https://www.eia.gov/naturalgas/ngqs/" class="uri">https://www.eia.gov/naturalgas/ngqs/</a> (Next to “Download”
-select “Download entire data to delimited text file.”) EIA-860: <a href="https://www.eia.gov/electricity/data/eia860/" class="uri">https://www.eia.gov/electricity/data/eia860/</a> EIA-861: <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a> EIA-923: <a href="https://www.eia.gov/electricity/data/eia923/" class="uri">https://www.eia.gov/electricity/data/eia923/</a> EIA
-Emissions by Plant Estimates: <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a> Census
-Heating Fuel Type (B25040): <a href="https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040" class="uri">https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040</a></p>
-<p>#METHODOLOGY #EIA-861 Much of the data used in this report come from
-the Annual Electric Power Industry Report, also known as EIA-861. As
-stated on the EIA website, this survey “is a cenus of all United States
-electric utilities.” A ZIP file of the data gathered from this survey
-can be downloaded from the eia website at <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a>. The ZIP
+<p><strong>DATA SOURCES:</strong></p>
+<p>EIA-176: <a href="https://www.eia.gov/naturalgas/ngqs/" class="uri">https://www.eia.gov/naturalgas/ngqs/</a> (Next to
+“Download,” select “Download entire data to delimited text file.”)</p>
+<p>EIA-860: <a href="https://www.eia.gov/electricity/data/eia860/" class="uri">https://www.eia.gov/electricity/data/eia860/</a></p>
+<p>EIA-861: <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a></p>
+<p>EIA-923: <a href="https://www.eia.gov/electricity/data/eia923/" class="uri">https://www.eia.gov/electricity/data/eia923/</a></p>
+<p>EIA Emissions by Plant Estimates: <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a></p>
+<p>Census Heating Fuel Type (B25040): <a href="https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040" class="uri">https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040</a></p>
+<p><strong>METHODOLOGY:</strong></p>
+<p><em><strong>EIA-861</strong></em></p>
+<p>Much of the data used in this report come from the Annual Electric
+Power Industry Report, also known as EIA-861. As stated on the EIA
+website, this survey “is a cenus of all United States electric
+utilities.” A ZIP file of the data gathered from this survey can be
+downloaded from the eia website at <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a>. The ZIP
 file contains numerous files containing data on different subjects. Data
 on demand response and energy efficiency programs were taken from the
 “Demand Response” and “Energy Efficiency” files, respectively. SAIDI,
@@ -380,23 +388,38 @@ SAIFI, and CAIDI metrics were all taken from the “Reliability” file.
 Lastly, the “Sales to Ultimate Customers” provided revenue ($000s),
 energy sales (MWh), and customer numbers disaggregated by sector. All
 data is at the utility level.</p>
-<p>#Reliability Metrics As a brief overview on the metrics, SAIDI
-(System Average Interruption Duration Index) and SAIFI (System Average
-Interruption Frequency Index) data are measured directly each year and
-are based on all of the “nonmomentary outages” that occur in a year.
-SAIDI is calculated as the minutes of power outage multiplied by the
-percent of customers in the system that were affected by the outage.
+<p><strong>Reliability Metrics</strong></p>
+<p><em>Data Description</em></p>
+<p>SAIDI (System Average Interruption Duration Index) and SAIFI (System
+Average Interruption Frequency Index) data are measured directly each
+year and are based on all of the “nonmomentary outages” that occur in a
+year. SAIDI is calculated as the minutes of power outage multiplied by
+the percent of customers in the system that were affected by the outage.
 SAIFI, meanwhile, is simply the percent of customers in the system that
 were affected by the outage. CAIDI (Customer Average Interruption
 Duration Index), in comparison, is derived from the SAIDI and SAIFI
 values using the simple calculation of <span class="math inline">\(\frac{SAIDI}{SAIFI}\)</span>, resulting in the
 total minutes of power outage.</p>
-<p><strong>Data Quality Considerations</strong></p>
-<p>For the reliability metrics specifically, we decided to use only the
-data that corresponded to the “IEEE Standard” and excluded all data that
-corresponded to an “Other Standard.” This unfortunately excludes Hawaii
+<p>The metrics are generally further split to account for “Major Event
+Days” (MEDs). Using MEDs is a strategy to account for when a utility’s
+outages are caused by a major event (e.g. an earthquake) that is outside
+of a utility’s control. Therefore, SAIDI without MED, for example, is
+meant to show how reliable a utility is in its day-to-day operations.
+The reliability data also includes columns that give the metrics with
+MEDs and “Minus LOS,” where LOS stands for loss of supply. These “Minus
+LOS” metrics account for when the transmission system fails to deliver
+energy and causes an outage. Transmission systems are often controlled
+by entities other than a local utility, which generally controls the
+distribution system, and so this is again a means of accounting for
+outages that are beyond a utility’s control (a helpful explainer on all
+of these details can be found here: <a href="https://www.youtube.com/watch?v=oVH9L0fCMTU" class="uri">https://www.youtube.com/watch?v=oVH9L0fCMTU</a>).</p>
+<p><em>Data Quality Considerations</em></p>
+<p>For the reliability metrics, we decided to use only the data that
+corresponded to the “IEEE standard” and we excluded all data that
+corresponded to an “other standard.” This unfortunately excludes Hawaii
 from the state-level charts, since none of the Hawaii utilities
-submitted data under the IEEE standard in 2021.</p>
+submitted data under the IEEE standard in 2021. It also excludes
+Wisconsin Power &amp; Light from our Wisconsin IOU charts.</p>
 <p>We decided to only use IEEE standard data because “other standard”
 data can differ on multiple points that makes it impossible to know
 whether comparisons between data of different standards are valid (we
@@ -417,46 +440,76 @@ at “other standard” data where a momentary outage is equal to less than
 5 minutes, but there is another important difference between standards
 that would continue to jeopardize valid comparisons.</p>
 <p>The other major way that standards differ, potentially, is in the
-definition of “Major Event Days” (MEDs). SAIDI, SAIFI, and CAIDI values
-can be calculated with or without MEDs as well as with “Minus Loss of
-Supply.” The latter, which covers when transmission lines fail to
-provide power, is only available within the IEEE standard. When MEDs are
-included, all outage data, regardless of cause or severity of the
-outage, are included. “Without MEDs” values remove any data that come
-from days on which that day’s total SAIDI value is deemed an outlier
-when compared to a threshold calculated for each state using the
-previous five-years of SAIDI data in that state. It’s important to note
-that because the previous five years of data are incorporated to come up
-with the MED threshold, a region that consistently faces poor weather
-that would otherwise increase outages will be penalized for failing to
-adapt to their average weather patterns. TKTKT if this is true from the
-email. (<a href="https://www.youtube.com/watch?v=oVH9L0fCMTU" class="uri">https://www.youtube.com/watch?v=oVH9L0fCMTU</a>)</p>
-<p>The resulting SAIDI “without MEDs” is meant to showcase how reliable
-a utilities distribution system is on a “day-to-day” basis. That said,
-SAIDI with and without MEDs can be correlated. For example, if a
-hurricane were to cause outages towards the end of a day, the SAIDI
-value for that day may be low enough for the day to not count as an MED,
-but the next few days may all be MEDs.</p>
-<p>So, maybe we should provide graphs of without MEDs, too? Or graphs
-organized by w/o MED with an x axis cutoff that makes it easier to
-read?</p>
-<p>The second major datasource for this report is form EIA-176 (“Annual
-Report of Natural and Supplemental Gas Supply and Disposition”). All
-information on natural gas provided in this report, including that on
-lost gas, and natural gas usage, revenues, and costs by sector are
-derived from the data provided via EIA-176.</p>
+threshold used to define “Major Event Days” (MEDs). The issue is that it
+is impossible to know how exactly a MED threshold has been defined by
+utilities using non-IEEE standards. While the IEEE standard uses the
+past 5 years of data (or as much data as possible if the utility has
+less than 5 years of data), under another standard, more or less data
+may be included which potentially invalidate comparisons between
+“without MEDs” metrics. Beyond the amount of data used, the exact
+equation used to calculate the threshold may differ as well (the
+equation used for the IEEE standard can be found here: <a href="https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf" class="uri">https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf</a>).</p>
+<p><strong>Sales to Ultimate Customers</strong></p>
+<p>Sales to ultimate customers data is split into 4 different parts, as
+denoted by the “parts” column, corresponding to different levels of
+service that customers receive. Part A corresponds to “full service,”
+which includes both energy and distribution services, Part B to
+corresponds just to energy services, Part C to delivery-only services
+“and all other charges”, and Part D to “Bundled Service (Energy Service
+Providers and Power Marketers)”. As stated in the instructions for form
+861, the “the amount of electricity sold to customers purchasing
+electricity for their own use and not for resale” is the sum of parts A,
+B, and D. So, for our calculations, which focus on costs to end-users,
+we exclude part C values from consideration. For questions though, that
+use a utility’s total revenues as a comparison point for their
+investments in demand response or energy efficiency, we include Part C
+since excluding it would understate a single utility’s revenues.</p>
+<p><strong>Energy Efficiency</strong></p>
+<p>One thing to look out for when measuring the energy efficiency
+investments of individual utilities is that in certain instances the
+utility is contributing to energy efficiency programs that are
+administered by another entity. In such an instance, the efficiency
+investments will be reported by and therefore attributed to said program
+administrator, rather than the utility itself. This is the case for
+Wisconsin’s IOUs, which are all statutorily required to contribute to
+the states “Focus on Energy” program, which is administered by Focus on
+Energy (that said, a Wisconsin IOU could, and we would argue that they
+should, invest in energy efficiency beyond the simple statutorily
+required amount).</p>
+<p><strong>Demand Response</strong></p>
+<p>We do not have any notes to include on the demand response data.</p>
+<p><em><strong>EIA-176</strong></em></p>
+<p>The second major data source used for this report comes from form
+EIA-176 (“Annual Report of Natural and Supplemental Gas Supply and
+Disposition”). All information on natural gas provided in this report,
+including that on lost gas, and natural gas usage, revenues, and costs
+by sector are derived from the data provided via EIA-176.</p>
+<p><em>Total Disposition</em></p>
+<p>To put the total lost gas value in context, we present a couple of
+figures that show lost gas in proportion to the “total disposition” of
+natural gas. This value corresponds to the amount of natural gas that a
+utility has distributed in the year in question. Other similar reports
+have instead used total sales as the denominator, but we felt that what
+mattered most was the amount of natural gas that a utility was “in
+charge of,” rather than just how much they eventually sell. We
+alternatively could have chosen to use “total supply” as the
+denominator, although in theory total supply and total disposition
+should be equal (“unaccounted for gas” is the metric given for the
+difference between supply and disposition).</p>
+<p><em><strong>Other Data Sources</strong></em></p>
 <p>Other than data from form EIA-861 and form EIA-176, this report also
-uses data from form EIA-860 (“Annual Electric Generator Report”) and
-form EIA-923 (“Power Plant Operations Report”) when discussing the
-various fuels used for generation by and the emissions from each
-state’s/utility’s generators. The emissions data actually comes from the
-EPA, but is aggregated by EIA and provided at <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a> (the 860
-file is just necessary to match the plant numbers given in the emissions
-data with the utility that owns the plant.)</p>
+uses data from <strong>form EIA-860</strong> (“Annual Electric Generator
+Report”) and <strong>form EIA-923</strong> (“Power Plant Operations
+Report”) when discussing the various fuels used for generation by each
+state’s/utility’s generators. Emissions data comes from the EPA, but is
+aggregated by EIA and provided at <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a>. The
+EIA-860 file is used simply to match the plant numbers given in the
+emissions data with the utility that owns the plant.)</p>
 <p>Outside of EIA data and the EPA emissions, this report also uses the
-U.S. Census’ American Community Survey data (<a href="https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040" class="uri">https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040</a>)
-to calculate the energy source used for heating in households across the
-U.S.</p>
+<strong>U.S. Census’ American Community Survey</strong> data to
+calculate the energy source used for heating in households across the
+U.S. Specifically, we look at the 2021 5-year estimate and look at
+question B25040 (“House Heating Fuel”).</p>
 </div>
 
 
