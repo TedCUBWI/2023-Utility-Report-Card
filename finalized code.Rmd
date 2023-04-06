@@ -1,0 +1,4444 @@
+---
+title: "Utility Report 2023"
+author: "CUB WI"
+output: 
+  pdf_document
+date: "2023-03-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.height = 11, fig.width = 8)
+
+## set working directory
+setwd("C:/Users/TedCallon/Desktop/Utility Performance Data Project")
+
+## read in necessary libraries
+library(ggplot2) # for generating charts
+library(dplyr) # for manipulating dataframes
+library(tidyr) # for manipulating dataframes
+library(readxl) # for reading in data
+library(stringr) # for manipulating strings
+library(lubridate) # for manipulating dates
+library(scales) # used for colors in certain graphs
+
+# prepare functions
+### Not particularly necessary but column names are a bit easier
+### to deal with without spaces
+name_repair <- function(colname) {
+  str_replace_all(colname, " ", ".")
+}
+
+### formats graphs in a standardized fashion
+format_graph <-
+  function(g,
+           title_text,
+           subtitle_text,
+           x_text,
+           y_text,
+           caption_text,
+           legend_pos,
+           x_angle) {
+    g <-
+      g + labs(
+        title = title_text,
+        subtitle = subtitle_text,
+        x = x_text,
+        y = y_text,
+        caption = caption_text
+      ) +
+      theme(
+        plot.title = element_text(size = 19),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 12),
+        axis.title = element_text(size = 20),
+        axis.text.x = element_text(angle = x_angle),
+        legend.title = element_text(size = 20),
+        text = element_text(size = 16, family = "Times"),
+        legend.spacing.y = unit(0.5, 'cm'),
+        plot.caption = element_text(
+          size = 12,
+          face = "italic",
+          hjust = 1
+        ),
+        plot.caption.position = "plot",
+        legend.position = legend_pos
+      )
+    return(g)
+  }
+
+### formats the legends of certain graphs
+format_legend <-
+  function(g,
+           legend_breaks,
+           legend_labels,
+           color_fill,
+           legend_title) {
+    g <-
+      g + scale_fill_manual(
+        name = legend_title,
+        breaks = legend_breaks,
+        labels = legend_labels,
+        values = color_fill
+      )
+    return(g)
+  }
+
+## for giving states full names (e.g. WI becomes Wisconsin)
+crosswalk <- read.csv("./Data/state_fips_crosswalk.csv")
+colnames(crosswalk)[2] <- "State"
+
+## formatting for WI utility names:
+formatted_names <- c(
+  "Madison Gas and\nElectric Company\n",
+  "Northern States\nPower - Wisconsin",
+  "Superior Water, Light\nand Power Company\n",
+  "Wisconsin Electric\nPower Company",
+  "Wisconsin Power\nand Light Company\n",
+  "Wisconsin Public\nService Corporation",
+  "Wisconsin Gas\nCompany\n"
+)
+## how the IOUs are labeled in the gas data
+gas_IOUs <- c(
+  "MADISON GAS ELEC CO",
+  "NORTHERN STATES PWR CO",
+  "SUPERIOR WATER LIGHT AND POWER CO",
+  "WISCONSIN ELEC PWR CO",
+  "WISCONSIN POWER AND LIGHT COMPANY",
+  "WISCONSIN PUB SVC CORP",
+  "WISCONSIN GAS COMPANY"
+)
+## how the IOUs are labeled in the electric data
+elec_IOUs <-
+  c(
+    "Madison Gas & Electric Co",
+    "Northern States Power Co",
+    "Superior Water and Light Co",
+    "Wisconsin Electric Power Co",
+    "Wisconsin Power & Light Co",
+    "Wisconsin Public Service Corp",
+    ""
+  )
+## a crosswalk file to help with formatting names
+utility_names <-
+  data.frame(formatted_names, Utility.Name = elec_IOUs, NAME1 = gas_IOUs)
+
+### Reliability graphs
+
+## list of key columns to keep from files to make combining multiple years of data easier
+df_colnames <-
+  c(
+    "Data.Year",
+    "Utility.Number",
+    "Utility.Name",
+    "State",
+    "Ownership",
+    "SAIDI.With.MED",
+    "SAIFI.With.MED",
+    "CAIDI.With.MED",
+    "SAIDI.Without.MED",
+    "SAIFI.Without.MED",
+    "CAIDI.Without.MED",
+    "Number.of.Customers"
+  )
+
+## initialize dataframes
+reliability <- NULL
+WPL <- NULL
+WI_utility_reliability <- NULL
+
+## read in reliability data, one year at a time. 
+for (i in 2021:2013) {
+  path <- paste0("./Data/f861", i, "/Reliability_", i, ".xlsx")
+  temp <- read_excel(path,
+                     skip = 1,
+                     na = c("", "."),
+                     .name_repair = name_repair)
+  ## break out Wisconsin Power and Light, since it doesn't use the IEEE standard
+  WPL_temp <-
+    temp[temp$Utility.Name == "Wisconsin Power & Light Co", ]
+  WPL_temp <- WPL_temp[1, ] #removes the NA row
+  WPL_temp <- select(WPL_temp,!which(colSums(is.na(WPL_temp)) > 0)) # removes IEEE standard columns
+  WPL_temp <- select(WPL_temp, all_of(df_colnames))
+  WPL <- rbind(WPL, WPL_temp)
+  ## keeps only up to the end of the IEEE standards data
+  temp <-
+    temp[, c(1:which(colnames(temp) == "Number.of.Customers")[1])]
+  temp <- select(temp, all_of(df_colnames))
+  temp <- na.omit(temp)
+  reliability <- rbind(reliability, temp)
+  WI_temp <-
+    filter(temp, State == "WI" & Utility.Name %in% elec_IOUs)
+  WI_utility_reliability <- rbind(WI_utility_reliability, WI_temp)
+}
+
+## Keep only the most recent year of data to use for state charts
+#### can change this if choosing to incorporate longitudinal state charts
+reliability <-
+  filter(reliability, Data.Year == max(reliability$Data.Year))
+
+### Prepare SAIDI, SAIFI, and CAIDI numbers
+# find relevant numbers for the respect metrics
+# To find a state-level number, need to disaggregate the utility metrics into
+# their parts and then recalculate together.
+reliability$sum_of_all_customer_interruption_durations_w_MED <-
+  reliability$SAIDI.With.MED * reliability$Number.of.Customers
+reliability$total_number_of_customers_w_interruptions_w_MED <-
+  reliability$SAIFI.With.MED * reliability$Number.of.Customers
+reliability$sum_of_all_customer_interruption_durations_wo_MED <-
+  reliability$SAIDI.Without.MED * reliability$Number.of.Customers
+reliability$total_number_of_customers_w_interruptions_wo_MED <-
+  reliability$SAIFI.Without.MED * reliability$Number.of.Customers
+
+## state level
+# Aggregate individual utility data together to find state-level calculations
+state_reliability <- group_by(reliability, State)
+state_reliability <-
+  summarise(
+    state_reliability,
+    interruptions_duration_w_MED = sum(sum_of_all_customer_interruption_durations_w_MED, na.rm = T),
+    interruptions_count_w_MED = sum(total_number_of_customers_w_interruptions_w_MED, na.rm = T),
+    interruptions_duration_wo_MED = sum(sum_of_all_customer_interruption_durations_wo_MED, na.rm = T),
+    interruptions_count_wo_MED = sum(total_number_of_customers_w_interruptions_wo_MED, na.rm = T),
+    num_customers = sum(Number.of.Customers, na.rm = T)
+  )
+# make state-level metrics
+state_reliability$SAIDI.With.MED <-
+  state_reliability$interruptions_duration_w_MED / state_reliability$num_customers
+state_reliability$SAIFI.With.MED <-
+  state_reliability$interruptions_count_w_MED / state_reliability$num_customers
+state_reliability$CAIDI.With.MED <-
+  state_reliability$SAIDI.With.MED / state_reliability$SAIFI.With.MED
+state_reliability$SAIDI.Without.MED <-
+  state_reliability$interruptions_duration_wo_MED / state_reliability$num_customers
+state_reliability$SAIFI.Without.MED <-
+  state_reliability$interruptions_count_wo_MED / state_reliability$num_customers
+state_reliability$CAIDI.Without.MED <-
+  state_reliability$SAIDI.Without.MED / state_reliability$SAIFI.Without.MED
+
+## remove 0s
+#This removes Hawaii in 2021 data
+state_reliability <- filter(state_reliability, num_customers > 0)
+## include WPL
+WI_utility_reliability <- rbind(WI_utility_reliability, WPL)
+WI_utility_reliability <-
+  left_join(WI_utility_reliability, utility_names, by = "Utility.Name")
+## Format the utility names nicely
+WI_utility_reliability$Utility.Name <-
+  WI_utility_reliability$formatted_names
+
+## this helps everything fit together on the graph without getting cut off. 
+colnames(WI_utility_reliability)[3] <- "Utility\nName"
+
+## add highlight for WI
+#### (used to highlight the Wisconsin bar in the bar charts)
+state_reliability$WI <- F
+state_reliability[state_reliability$State == "WI", "WI"] <- T
+
+## change state names to full names
+state_reliability <-
+  left_join(state_reliability, crosswalk, by = "State")
+state_reliability$State <-
+  str_to_title(state_reliability$State_Name)
+
+## change year type for the longitudinal graphs
+#### helps with formatting
+WI_utility_reliability$Data.Year <-
+  mdy(paste0("1/1/", WI_utility_reliability$Data.Year))
+
+### Lost Gas Graphs
+# initilize datasets
+gas <- data.frame()
+temp <- data.frame()
+### read through the gas data until there's no more data left
+i <- 1
+while (class(temp)[1] != "try-error") {
+  gas <- rbind(gas, temp)
+  temp <-
+    try(read_excel("./Data/all_ng_data/all_data_176.csv", sheet = i),
+        silent = T)
+  i <- i + 1
+}
+
+colnames(gas)[5] <- "State"
+
+# dataframe of gas company names to combine using gas company IDs in the gas data
+gas_companies_crosswalk <-
+  read_excel("./Data/all_ng_data/all_company_176.xlsx")
+colnames(gas)[2] <- "COMPANY_ID"
+gas <- left_join(gas, gas_companies_crosswalk, by = "COMPANY_ID")
+
+## construct dataframes to create graphs
+# lost gas state graph
+lost_gas_index <- 1700 #index number for "lost gas" in the data
+fig_lost_gas_state <-
+  filter(gas, LINE == lost_gas_index & YEAR == max(gas$YEAR) & ATYPE == "VL")
+fig_lost_gas_state <- group_by(fig_lost_gas_state, State)
+fig_lost_gas_state <-
+  summarize(fig_lost_gas_state, Lost.Gas = sum(VALUE))
+fig_lost_gas_state$Lost.Gas <-
+  fig_lost_gas_state$Lost.Gas / 10 ^ 6 #converts values to billions of cubic feet
+
+## add highlight for WI bar in the bar graph
+fig_lost_gas_state$WI <- F
+fig_lost_gas_state[fig_lost_gas_state$State == "WI", "WI"] <- T
+
+# lost gas WI IOU's graph
+fig_lost_gas_utility <-
+  filter(gas, State == "WI" & LINE == lost_gas_index & ATYPE == "VL")
+fig_lost_gas_utility <-
+  filter(fig_lost_gas_utility, NAME1 %in% gas_IOUs)
+fig_lost_gas_utility$Lost.Gas <-
+  fig_lost_gas_utility$VALUE / 10 ^ 3 #converts values to millions of cubic feet
+
+# lost gas percent of disposition state graph
+total_disposition_index <- 1900  #index number in the data for total gas distributed
+fig_lost_gas_bydisposition_state <-
+  filter(gas, LINE == total_disposition_index & ATYPE == "VL" & YEAR == max(gas$YEAR))
+fig_lost_gas_bydisposition_state <-
+  group_by(fig_lost_gas_bydisposition_state, State)
+fig_lost_gas_bydisposition_state <-
+  summarize(fig_lost_gas_bydisposition_state, Total.Gas.Disposition = sum(VALUE))
+fig_lost_gas_bydisposition_state <-
+  left_join(fig_lost_gas_state, fig_lost_gas_bydisposition_state, by = "State")
+fig_lost_gas_bydisposition_state$Total.Gas.Disposition <-
+  fig_lost_gas_bydisposition_state$Total.Gas.Disposition / 10 ^ 6 #converts values to billions of cubic feet
+fig_lost_gas_bydisposition_state$Lost.Gas.percent.of.disposition <-
+  fig_lost_gas_bydisposition_state$Lost.Gas / fig_lost_gas_bydisposition_state$Total.Gas.Disposition *
+  100 # converts to a percent
+
+# lost gas percent of disposition utility graph
+fig_lost_gas_bydisposition_utility <-
+  filter(gas, State == "WI" & LINE == total_disposition_index & ATYPE == "VL")
+fig_lost_gas_bydisposition_utility <-
+  filter(fig_lost_gas_bydisposition_utility, NAME1 %in% gas_IOUs)
+fig_lost_gas_bydisposition_utility <-
+  group_by(fig_lost_gas_bydisposition_utility, NAME1, YEAR)
+fig_lost_gas_bydisposition_utility <-
+  summarize(fig_lost_gas_bydisposition_utility,
+            Total.Gas.Disposition = sum(VALUE))
+fig_lost_gas_bydisposition_utility <-
+  left_join(fig_lost_gas_utility,
+            fig_lost_gas_bydisposition_utility,
+            by = c("NAME1", "YEAR"))
+fig_lost_gas_bydisposition_utility$Total.Gas.Disposition <-
+  fig_lost_gas_bydisposition_utility$Total.Gas.Disposition / 10 ^ 3 #converts to millions of cubic feet
+fig_lost_gas_bydisposition_utility$Lost.Gas.percent.of.disposition <- 
+  fig_lost_gas_bydisposition_utility$Lost.Gas / fig_lost_gas_bydisposition_utility$Total.Gas.Disposition * 100 #convers to a percent
+
+## change state names to full names
+fig_lost_gas_state <-
+  left_join(fig_lost_gas_state, crosswalk, by = "State")
+fig_lost_gas_state$State <-
+  str_to_title(fig_lost_gas_state$State_Name)
+fig_lost_gas_bydisposition_state <-
+  left_join(fig_lost_gas_bydisposition_state, crosswalk, by = "State")
+fig_lost_gas_bydisposition_state$State <-
+  str_to_title(fig_lost_gas_bydisposition_state$State_Name)
+
+## format names correctly
+fig_lost_gas_utility <-
+  left_join(fig_lost_gas_utility, utility_names, by = "NAME1")
+fig_lost_gas_utility$NAME1 <- fig_lost_gas_utility$formatted_names
+fig_lost_gas_bydisposition_utility <-
+  left_join(fig_lost_gas_bydisposition_utility, utility_names, by = "NAME1")
+fig_lost_gas_bydisposition_utility$NAME1 <-
+  fig_lost_gas_bydisposition_utility$formatted_names
+
+### heating fuel source by state
+# read in data
+heating_fuel_source <-
+  read.csv("./Data/ACS 2021 5-year estimate household numbers by heating fuel and state.csv")
+
+# format data
+heating_fuel_source <-
+  select(heating_fuel_source, contains("label") |
+           contains("Estimate"))
+heating_fuel_source$Label..Grouping. <-
+  str_remove_all(heating_fuel_source$Label..Grouping., "\\s{2}+")
+heating_fuel_source <- as.data.frame(t(heating_fuel_source))
+colnames(heating_fuel_source) <- heating_fuel_source[1, ]
+heating_fuel_source <- heating_fuel_source[-1, ]
+heating_fuel_source$State_Name <-
+  str_to_title(str_replace_all(str_remove_all(
+    row.names(heating_fuel_source), "..Est.+"
+  ), "\\.", " "))
+## convert rows to numeric
+heating_fuel_source[, c(1:10)] <-
+  apply(heating_fuel_source[, c(1:10)], 2, function(x)
+    as.numeric(str_remove_all(x, ",")))
+
+## percent of houses with electric heat
+heating_fuel_source$perc_electric <-
+  heating_fuel_source$Electricity / heating_fuel_source$`Total:` * 100
+
+## percent of households with gas heating
+heating_fuel_source$perc_gas <-
+  heating_fuel_source$`Utility gas` / heating_fuel_source$`Total:` * 100
+
+## percent of households using other heating fuels for heating
+heating_fuel_source$perc_other_heating <-
+  (heating_fuel_source$`Bottled, tank, or LP gas` + heating_fuel_source$`Fuel oil, kerosene, etc.` + heating_fuel_source$`Coal or coke` + heating_fuel_source$Wood + heating_fuel_source$`Solar energy` + heating_fuel_source$`Other fuel`) / heating_fuel_source$`Total:` * 100
+
+## percent of households using no heating
+heating_fuel_source$perc_no_heating <-
+  heating_fuel_source$`No fuel used` / heating_fuel_source$`Total:` * 100
+
+## make stackable barchart
+fig_heating_fuel_source <-
+  pivot_longer(
+    heating_fuel_source,
+    cols = contains("perc"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+
+### electricity use per residential customer
+# read in data
+electricity_utility_data <- NULL
+## important columns to keep, which helps combine data from different years together
+elec_cols <-
+  c(
+    "Data Year",
+    "Utility Number",
+    "Utility Name",
+    "Part",
+    "State",
+    "Ownership",
+    "residential.Revenues",
+    "residential.Sales",
+    "residential.Customers",
+    "commercial.Revenues",
+    "commercial.Sales",
+    "commercial.Customers",
+    "industrial.Revenues",
+    "industrial.Sales",
+    "industrial.Customers",
+    "transportation.Revenues",
+    "transportation.Sales",
+    "transportation.Customers",
+    "total.Revenues",
+    "total.Sales",
+    "total.Customers"
+  )
+
+# read in and format data
+for (i in c(2021:2003)) {
+  path <- paste0("./Data/f861", i, "/Sales_Ult_Cust_", i, ".xlsx")
+  if (i == 2014 |
+      i == 2013)
+    path <- paste0("./Data/f861", i, "/Sales_Ult_Cust_", i, ".xls")
+  if (i < 2012)
+    path <-
+      paste0("./Data/861_", i, "/", i, "/Sales_Ult_Cust_", i, ".xlsx")
+  temp <- read_excel(path,
+                     na = c("", "."), .name_repair = name_repair)
+  ## This code generates accurate and descriptive column names and then
+  ## cleans up the dataframe
+  colnames(temp) <- str_to_title(colnames(temp))
+  residential <- which(colnames(temp) == "Residential")
+  commercial <- which(colnames(temp) == "Commercial")
+  industrial <- which(colnames(temp) == "Industrial")
+  transportation <- which(colnames(temp) == "Transportation")
+  total <- which(colnames(temp) == "Total")
+  colnames(temp)[c(1:(residential - 1))] <-
+    temp[2, c(1:(residential - 1))]
+  colnames(temp)[c(residential:(commercial - 1))] <-
+    paste0("residential.", temp[1, c(residential:(commercial - 1))])
+  colnames(temp)[c(commercial:(industrial - 1))] <-
+    paste0("commercial.", temp[1, c(commercial:(industrial - 1))])
+  colnames(temp)[c(industrial:(transportation - 1))] <-
+    paste0("industrial.", temp[1, c(industrial:(transportation - 1))])
+  colnames(temp)[c(transportation:(total - 1))] <-
+    paste0("transportation.", temp[1, c(transportation:(total - 1))])
+  colnames(temp)[c(total:ncol(temp))] <-
+    paste0("total.", temp[1, c(total:ncol(temp))])
+  temp <- temp[-c(1, 2), ]
+  temp <- select(temp, all_of(elec_cols))
+  electricity_utility_data <- rbind(electricity_utility_data, temp)
+}
+
+## turn key columns into numeric
+electricity_utility_data[, c(which(colnames(electricity_utility_data) == "residential.Revenues"):ncol(electricity_utility_data))] <-
+  apply(electricity_utility_data[, c(which(colnames(electricity_utility_data) == "residential.Revenues"):ncol(electricity_utility_data))], 2, function(x)
+    as.numeric(x))
+
+electricity_utility_data <- filter(electricity_utility_data,  !is.na(`Utility Number`))
+
+## split single year and multiyear datasets
+electricity_utility_data_long <- electricity_utility_data
+electricity_utility_data <-
+  filter(electricity_utility_data,
+    `Data Year` == max(electricity_utility_data$`Data Year`, na.rm = T))
+
+## format utility names
+colnames(utility_names)[2] <- "Utility Name"
+elec_utility <-
+  left_join(electricity_utility_data_long, utility_names, by = "Utility Name")
+elec_utility <-
+  filter(elec_utility, State == "WI" & `Utility Name` %in% elec_IOUs)
+elec_utility$`Utility Name` <- elec_utility$formatted_names
+
+## State
+elec_customers_state <- group_by(electricity_utility_data, State)
+## part C is "distribution only" and including them in the case of
+## energy usage ends up double counting the amount of energy used because it
+## covers the energy that was both sold by one company and then delivered by a
+## second company. Customers also get double counted. So, it's removed here.
+## Furthermore, "Behind the Meter" ownership looks at 3rd-party owned solar, and
+## those values must be removed to get an accurate customer count.
+elec_customers_state <- filter(elec_customers_state, Part != "C" & Ownership != "Behind the Meter")
+elec_customers_state <-
+  summarise(
+    elec_customers_state,
+    residential.customers = sum(residential.Customers, na.rm = T)
+  )
+elec_use_state <- group_by(electricity_utility_data, State)
+elec_use_state <- filter(elec_use_state, Part != "C")
+elec_use_state <-
+  summarise(
+    elec_use_state,
+    residential.usage = sum(residential.Sales, na.rm = T)
+  )
+
+fig_elec_use_state <- left_join(elec_customers_state, elec_use_state, by = "State")
+
+fig_elec_use_state$residential.usage.per.customer <-
+  fig_elec_use_state$residential.usage / (fig_elec_use_state$residential.customers / 1000) # the 1000 is to deal with the fact that customers is in thousands
+
+## add highlight for WI
+fig_elec_use_state$WI <- F
+fig_elec_use_state[fig_elec_use_state$State == "WI", "WI"] <- T
+
+## Wisconsin IOUs
+fig_elec_use_utility <-
+  group_by(elec_utility, `Utility Name`, `Data Year`)
+fig_elec_use_utility <-
+  summarise(
+    fig_elec_use_utility,
+    residential.usage = sum(residential.Sales, na.rm = T),
+    residential.customers = sum(residential.Customers, na.rm = T)
+  )
+
+
+fig_elec_use_utility$residential.usage.per.customer <-
+  fig_elec_use_utility$residential.usage / (fig_elec_use_utility$residential.customers / 1000) # the 1000 is to deal with the fact that customers is in thousands
+
+### Electricity expenditures per residential customer
+## State
+elec_revenue_state <- group_by(electricity_utility_data, State)
+elec_revenue_state <-
+  summarise(elec_revenue_state,
+            residential.expenditures = sum(residential.Revenues, na.rm = T))
+
+fig_elec_expend_state <-
+  left_join(fig_elec_use_state, elec_revenue_state, by = "State")
+
+fig_elec_expend_state$residential.expenditures.per.customer <-
+  fig_elec_expend_state$residential.expenditures / (fig_elec_expend_state$residential.customers / 1000) # the 1000 is to deal with the fact that customers is in thousands
+
+## add highlight for WI
+fig_elec_expend_state$WI <- F
+fig_elec_expend_state[fig_elec_expend_state$State == "WI", "WI"] <-
+  T
+
+## change state names to full names
+fig_elec_use_state <-
+  left_join(fig_elec_use_state, crosswalk, by = "State")
+fig_elec_use_state$State <-
+  str_to_title(fig_elec_use_state$State_Name)
+fig_elec_expend_state <-
+  left_join(fig_elec_expend_state, crosswalk, by = "State")
+fig_elec_expend_state$State <-
+  str_to_title(fig_elec_expend_state$State_Name)
+
+## Wisconsin IOU
+fig_elec_expend_utility <-
+  group_by(elec_utility, `Utility Name`, `Data Year`)
+fig_elec_expend_utility <-
+  summarise(
+    fig_elec_expend_utility,
+    residential.expenditures.per.customer = sum(residential.Revenues, na.rm = T),
+    residential.customers = sum(residential.Customers, na.rm = T)
+  )
+
+
+fig_elec_expend_utility$residential.expenditures.per.customer <-
+  fig_elec_expend_utility$residential.expenditures.per.customer /
+  (fig_elec_expend_utility$residential.customers / 1000) # the 1000 is to deal with the fact that customers is in thousands
+
+### Cost per kWh of Electricity in the Residential Sector
+## State
+fig_elec_cost_state <- fig_elec_expend_state
+fig_elec_cost_state$residential.cost.per.kWh <-
+  fig_elec_cost_state$residential.expenditures / fig_elec_cost_state$residential.usage *
+  100 ## converts from dollars to cents
+
+## Wisconsin IOU
+fig_elec_cost_utility <-
+  group_by(elec_utility, `Utility Name`, `Data Year`)
+fig_elec_cost_utility <-
+  summarise(
+    fig_elec_cost_utility,
+    residential.expenditures = sum(residential.Revenues, na.rm = T),
+    residential.usage = sum(residential.Sales, na.rm = T)
+  )
+fig_elec_cost_utility$residential.cost.per.kWh <-
+  fig_elec_cost_utility$residential.expenditures / fig_elec_cost_utility$residential.usage *
+  100 ## converts from dollars to cents
+
+### gas use graphs
+heat_content_index <- "0900"
+sales_index <- c(1010, 1020, 1030) # indices of the residential, commercial, and industrial sales
+transport_index <- c(1110, 1120, 1130) # indices of the residential, commercial, and industrial transport (meaning transporting of gas to those sectors)
+gas_use <-
+  filter(gas, (LINE %in% sales_index) | (LINE %in% transport_index))
+gas_heat_content <- filter(gas, LINE == heat_content_index & ATYPE == "VL")
+gas_heat_content <-
+  select(gas_heat_content, COMPANY_ID, VALUE, YEAR)
+colnames(gas_heat_content)[2] <- "heat.content"
+gas_use <-
+  left_join(gas_use, gas_heat_content, by = c("COMPANY_ID", "YEAR"))
+
+# residential gas graphs
+gas_residential <- filter(gas_use, (LINE == sales_index[1] | LINE == transport_index[1]))
+gas_residential <-
+  pivot_wider(gas_residential,
+              names_from = ATYPE,
+              values_from = VALUE)
+
+# states
+gas_residential_state <- group_by(gas_residential, State, YEAR)
+gas_residential_state <-
+  summarise(
+    gas_residential_state,
+    Customers = sum(CT, na.rm = T),
+    Revenue = sum(CS, na.rm = T),
+    Volume = sum(VL, na.rm = T),
+    heat.content = median(heat.content, na.rm = T)
+  )
+#### some companies (such as WP&L) don't provide heat contents, so will just use a state average in such a case
+#### the distribution isn't perfectly normal, so will use the median
+# volume is in thousands of cubic feet, heat.content is in BTU/cf, there are 100,000 btu in a therm
+gas_residential_state$Therms <-
+  gas_residential_state$Volume * gas_residential_state$heat.content / 100 #converts units to Therms
+gas_residential_state$use.per.res.customer <-
+  gas_residential_state$Therms / gas_residential_state$Customers
+gas_residential_state$expenditures.per.res.customer <-
+  gas_residential_state$Revenue / gas_residential_state$Customers
+gas_residential_state$res.cost.per.therm <-
+  gas_residential_state$Revenue / gas_residential_state$Therms
+
+## add highlight for WI
+gas_residential_state$WI <- F
+gas_residential_state[gas_residential_state$State == "WI", "WI"] <-
+  T
+
+# WI IOUs
+gas_residential_utility <-
+  filter(gas_residential, State == "WI" & NAME1 %in% gas_IOUs)
+gas_residential_utility <-
+  group_by(gas_residential_utility, NAME1, YEAR)
+gas_residential_utility <-
+  summarise(
+    gas_residential_utility,
+    CS = sum(CS), #cost - i.e. total revenue received from gas sales to customers
+    VL = sum(VL), #volume - i.e. total amount of gas distributed to customers
+    CT = sum(CT), #count - i.e. total number of customers gas was sent to
+    heat.content = heat.content
+  )
+
+## input state average values for missing heat content values
+temp <-
+  filter(gas_residential_utility,
+         is.na(heat.content) | heat.content == 9999)
+for (i in unique(temp$YEAR)) {
+  temp[temp$YEAR == i, "heat.content"] <-
+    gas_residential_state[gas_residential_state$State == "WI" &
+                            gas_residential_state$YEAR == i, "heat.content"]
+}
+
+gas_residential_utility <-
+  filter(gas_residential_utility,
+         !is.na(heat.content) & heat.content != 9999)
+gas_residential_utility <- rbind(gas_residential_utility, temp)
+
+## calculations
+gas_residential_utility$therm <-
+  gas_residential_utility$heat.content * gas_residential_utility$VL / 100 #converts units to Therms
+gas_residential_utility$use.per.res.customer <-
+  gas_residential_utility$therm / gas_residential_utility$CT
+gas_residential_utility$expenditures.per.res.customer <-
+  gas_residential_utility$CS / gas_residential_utility$CT
+gas_residential_utility$res.cost.per.therm <-
+  gas_residential_utility$CS / gas_residential_utility$therm
+
+## format names
+gas_residential_utility <-
+  left_join(gas_residential_utility, utility_names, by = "NAME1")
+gas_residential_utility$NAME1 <-
+  gas_residential_utility$formatted_names
+
+## leave only most recent year for state
+gas_residential_state <-
+  filter(gas_residential_state, YEAR == max(gas$YEAR))
+
+### Electricity Cost per kWh by Sector
+# commercial
+electricity_cost_commercial <-
+  select(electricity_utility_data,
+         `Utility Name`,
+         State,
+         Ownership,
+         contains("commercial"))
+# industrial
+electricity_cost_industrial <-
+  select(electricity_utility_data,
+         `Utility Name`,
+         State,
+         Ownership,
+         contains("industrial"))
+
+## format utility names
+elec_cost_com_utility <-
+  left_join(electricity_cost_commercial, utility_names, by = "Utility Name")
+elec_cost_com_utility <-
+  filter(elec_cost_com_utility,
+         State == "WI" & `Utility Name` %in% elec_IOUs)
+elec_cost_com_utility$`Utility Name` <-
+  elec_cost_com_utility$formatted_names
+elec_cost_ind_utility <-
+  left_join(electricity_cost_industrial, utility_names, by = "Utility Name")
+elec_cost_ind_utility <-
+  filter(elec_cost_ind_utility,
+         State == "WI" & `Utility Name` %in% elec_IOUs)
+elec_cost_ind_utility$`Utility Name` <-
+  elec_cost_ind_utility$formatted_names
+
+## State
+# commercial
+electricity_commercial_state <-
+  group_by(electricity_cost_commercial, State)
+electricity_commercial_state <-
+  summarise(
+    electricity_commercial_state,
+    Revenue = sum(commercial.Revenues, na.rm = T),
+    Volume = sum(commercial.Sales, na.rm = T)
+  )
+electricity_commercial_state <-
+  na.omit(electricity_commercial_state)
+electricity_commercial_state$com.cost.per.kWh <-
+  electricity_commercial_state$Revenue / electricity_commercial_state$Volume *
+  100 #converts units to cents
+electricity_commercial_state <-
+  left_join(electricity_commercial_state, crosswalk, by = "State")
+electricity_commercial_state$State <-
+  str_to_title(electricity_commercial_state$State_Name)
+
+# industrial
+electricity_industrial_state <-
+  group_by(electricity_cost_industrial, State)
+electricity_industrial_state <-
+  summarise(
+    electricity_industrial_state,
+    Revenue = sum(industrial.Revenues, na.rm = T),
+    Volume = sum(industrial.Sales, na.rm = T)
+  )
+electricity_industrial_state <-
+  na.omit(electricity_industrial_state)
+electricity_industrial_state$ind.cost.per.kWh <-
+  electricity_industrial_state$Revenue / electricity_industrial_state$Volume *
+  100 #converts units to cents
+electricity_industrial_state <-
+  left_join(electricity_industrial_state, crosswalk, by = "State")
+electricity_industrial_state$State <-
+  str_to_title(electricity_industrial_state$State_Name)
+
+## combine
+electricity_cost_sector_state <-
+  left_join(fig_elec_cost_state, electricity_commercial_state, by = "State")
+electricity_cost_sector_state <-
+  left_join(electricity_cost_sector_state,
+            electricity_industrial_state,
+            by = "State")
+
+## format dataframe for graphing
+fig_electricity_cost_sector_state <-
+  pivot_longer(
+    electricity_cost_sector_state,
+    cols = contains("cost"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+## Wisconsin IOUs
+# commercial
+elec_cost_com_utility$com.cost.per.kWh <-
+  elec_cost_com_utility$commercial.Revenues / elec_cost_com_utility$commercial.Sales *
+  100 #converts units to cents
+
+# industrial
+elec_cost_ind_utility$ind.cost.per.kWh <-
+  elec_cost_ind_utility$industrial.Revenues / elec_cost_ind_utility$industrial.Sales *
+  100 #converts units to cents
+
+# combine
+electricity_cost_sector_utility <-
+  left_join(elec_cost_com_utility, elec_cost_ind_utility, by = "Utility Name")
+electricity_cost_sector_utility <-
+  left_join(electricity_cost_sector_utility, fig_elec_cost_utility, by = "Utility Name")
+
+## format dataframe for graphing
+fig_electricity_cost_sector_utility <-
+  pivot_longer(
+    electricity_cost_sector_utility,
+    cols = contains("cost"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+###	Cost per Therm of Natural Gas by Sector
+# commercial
+gas_cost_commercial <-
+  filter(gas_use, (LINE == sales_index[2] |
+                     LINE == transport_index[2]) & YEAR == max(gas$YEAR))
+gas_cost_commercial <-
+  pivot_wider(gas_cost_commercial,
+              names_from = ATYPE,
+              values_from = VALUE)
+# industrial
+gas_cost_industrial <-
+  filter(gas_use, (LINE == sales_index[3] |
+                     LINE == transport_index[3]) & YEAR == max(gas$YEAR))
+gas_cost_industrial <-
+  pivot_wider(gas_cost_industrial,
+              names_from = ATYPE,
+              values_from = VALUE)
+
+## State
+# commercial
+gas_commercial_state <- group_by(gas_cost_commercial, State)
+gas_commercial_state <-
+  summarise(
+    gas_commercial_state,
+    Customers = sum(CT, na.rm = T),
+    Revenue = sum(CS, na.rm = T),
+    Volume = sum(VL, na.rm = T),
+    heat.content = median(heat.content, na.rm = T)
+  )
+gas_commercial_state$Therms <-
+  gas_commercial_state$Volume * gas_commercial_state$heat.content / 100 #converts units to Therms
+gas_commercial_state$com.cost.per.therm <-
+  gas_commercial_state$Revenue / gas_commercial_state$Therms
+
+# industrial
+gas_industrial_state <- group_by(gas_cost_industrial, State)
+gas_industrial_state <-
+  summarise(
+    gas_industrial_state,
+    Customers = sum(CT, na.rm = T),
+    Revenue = sum(CS, na.rm = T),
+    Volume = sum(VL, na.rm = T),
+    heat.content = median(heat.content, na.rm = T)
+  )
+gas_industrial_state$Therms <-
+  gas_industrial_state$Volume * gas_industrial_state$heat.content / 100 #converts units to Therms
+gas_industrial_state$ind.cost.per.therm <-
+  gas_industrial_state$Revenue / gas_industrial_state$Therms
+
+## combine
+gas_cost_sector_state <-
+  left_join(gas_residential_state, gas_commercial_state, by = "State")
+gas_cost_sector_state <-
+  left_join(gas_cost_sector_state, gas_industrial_state, by = "State")
+gas_cost_sector_state[is.na(gas_cost_sector_state)] <- 0
+
+## change state names to full names
+gas_cost_sector_state <-
+  left_join(gas_cost_sector_state, crosswalk, by = "State")
+gas_cost_sector_state$State_Name <-
+  str_to_title(gas_cost_sector_state$State_Name)
+gas_residential_state <-
+  left_join(gas_residential_state, crosswalk, by = "State")
+gas_residential_state$State <-
+  str_to_title(gas_residential_state$State_Name)
+
+## format dataframe for graphing
+fig_gas_cost_sector_state <-
+  pivot_longer(
+    gas_cost_sector_state,
+    cols = contains("cost"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+
+## Wisconsin IOUs
+# commercial
+gas_commercial_utility <-
+  filter(gas_cost_commercial, State == "WI" & NAME1 %in% gas_IOUs)
+gas_commercial_utility <- group_by(gas_commercial_utility, NAME1)
+gas_commercial_utility <-
+  summarise(
+    gas_commercial_utility,
+    CS = sum(CS),
+    VL = sum(VL),
+    CT = sum(CT),
+    heat.content = heat.content
+  )
+gas_commercial_utility <-
+  gas_commercial_utility[!duplicated(gas_commercial_utility), ]
+gas_commercial_utility[is.na(gas_commercial_utility$heat.content), "heat.content"] <-
+  gas_commercial_state[gas_commercial_state$State == "WI", "heat.content"]
+gas_commercial_utility$therm <-
+  gas_commercial_utility$heat.content * gas_commercial_utility$VL / 100 #converts units to Therms
+gas_commercial_utility$com.cost.per.therm <-
+  gas_commercial_utility$CS / gas_commercial_utility$therm
+
+# industrial
+gas_industrial_utility <-
+  filter(gas_cost_industrial, State == "WI" & NAME1 %in% gas_IOUs)
+gas_industrial_utility <- group_by(gas_industrial_utility, NAME1)
+gas_industrial_utility <-
+  summarise(
+    gas_industrial_utility,
+    CS = sum(CS),
+    VL = sum(VL),
+    CT = sum(CT),
+    heat.content = heat.content
+  )
+gas_industrial_utility <-
+  gas_industrial_utility[!duplicated(gas_industrial_utility), ]
+gas_industrial_utility[is.na(gas_industrial_utility$heat.content), "heat.content"] <-
+  gas_industrial_state[gas_industrial_state$State == "WI", "heat.content"]
+gas_industrial_utility$therm <-
+  gas_industrial_utility$heat.content * gas_industrial_utility$VL / 100 #converts units to Therms
+gas_industrial_utility$ind.cost.per.therm <-
+  gas_industrial_utility$CS / gas_industrial_utility$therm
+
+#combine
+gas_commercial_utility <-
+  left_join(gas_commercial_utility, utility_names, by = "NAME1")
+gas_commercial_utility$NAME1 <-
+  gas_commercial_utility$formatted_names
+gas_industrial_utility <-
+  left_join(gas_industrial_utility, utility_names, by = "NAME1")
+gas_industrial_utility$NAME1 <-
+  gas_industrial_utility$formatted_names
+gas_cost_sector_utility <-
+  left_join(filter(gas_residential_utility, YEAR == max(gas$YEAR)),
+            gas_commercial_utility,
+            by = "NAME1")
+gas_cost_sector_utility <-
+  left_join(gas_cost_sector_utility, gas_industrial_utility, by = "NAME1")
+
+## format dataframe for graphing
+fig_gas_cost_sector_utility <-
+  pivot_longer(
+    gas_cost_sector_utility,
+    cols = contains("cost"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+### Cost per Kilowatt Hour of Energy Efficiency Savings Total
+energy_efficiency <- NULL
+efficiency_cols <-
+  c(
+    "Utility.Characteristics..Data Year",
+    "Utility.Characteristics..Utility Name",
+    "Utility.Characteristics..State",
+    "Incremental.Life.Cycle.Savings.Energy Savings (MWh).Residential",
+    "Incremental.Life.Cycle.Savings.Energy Savings (MWh).Commercial",
+    "Incremental.Life.Cycle.Savings.Energy Savings (MWh).Industrial",
+    "Incremental.Life.Cycle.Savings.Energy Savings (MWh).Transportation",
+    "Incremental.Life.Cycle.Savings.Energy Savings (MWh).Total",
+    "Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Residential",
+    "Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Commercial",
+    "Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Industrial",
+    "Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Transportation",
+    "Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Total",
+    "Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Residential",
+    "Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Commercial",
+    "Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Industrial",
+    "Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Transportation",
+    "Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Total",
+    "Weighted.Average.Life.(Years).Residential",
+    "Weighted.Average.Life.(Years).Commercial",
+    "Weighted.Average.Life.(Years).Industrial",
+    "Weighted.Average.Life.(Years).Transportation"
+  )
+
+for (i in c(2021:2013)) {
+  path <- paste0("./Data/f861", i, "/Energy_Efficiency_", i, ".xlsx")
+  temp <- read_excel(path, na = c("", "."),
+                     .name_repair = name_repair)
+  # generates accurate and descriptive column names
+  keep <- c(which(colnames(temp) != ""), (ncol(temp) + 1))
+  for (k in 2:length(keep)) {
+    colnames(temp)[keep[k - 1]:(keep[k] - 1)] <-
+      colnames(temp)[keep[k - 1]]
+  }
+  temp[1, 1] <- ""
+  keep <- c(which(!(is.na(temp[1, ]))), (ncol(temp) + 1))
+  for (k in 2:length(keep)) {
+    temp[1, keep[k - 1]:(keep[k] - 1)] <- temp[1, keep[k - 1]]
+  }
+  colnames(temp) <-
+    paste0(colnames(temp), ".", temp[1, ], ".", temp[2, ])
+  temp <- temp[-c(1, 2), ]
+  # keep necessary columns
+  temp <- select(temp, all_of(efficiency_cols))
+  temp[, c(4:ncol(temp))] <-
+    apply(temp[, c(4:ncol(temp))], 2, function(x)
+      as.numeric(x))
+  colnames(temp)[c(1:3)] <- c("Data Year", "Utility.Name", "State")
+  temp <- filter(temp,!is.na(State))
+  energy_efficiency <- rbind(energy_efficiency, temp)
+}
+
+# State
+fig_energy_efficiency <-
+  group_by(energy_efficiency, State, `Data Year`)
+
+# take the lifetime values (cost, savings, etc.) and divide it by the expected
+# lifetime of the project. This way, if costs or savings do not all come equally,
+# then the resulting charts are not skewed simply by when the investment occurred.
+# This yields a more accurate picture of which states are making effective investments
+# over the long term. 
+# Only the sector-level values are levelized (not the total costs) - see below.
+for (i in 0:3) {
+  fig_energy_efficiency[, 4 + i] <-
+    fig_energy_efficiency[, 4 + i] / fig_energy_efficiency[, 19 + i]
+  fig_energy_efficiency[, 9 + i] <-
+    fig_energy_efficiency[, 9 + i] / fig_energy_efficiency[, 19 + i]
+  fig_energy_efficiency[, 14 + i] <-
+    fig_energy_efficiency[, 14 + i] / fig_energy_efficiency[, 19 + i]
+}
+
+# turns all infinite values to 0 (infinite values arise when a project with a time
+# frame of 0 has any cost or savings). This doesn't effect the cost per kWh 
+# chart - since costs and savings are both over the same lifetime, we can
+# divide total cost by total savings. 
+for (i in 4:ncol(fig_energy_efficiency)) {
+  fig_energy_efficiency[is.infinite(unlist(fig_energy_efficiency[, i])), i] <-
+    0
+}
+
+fig_energy_efficiency[is.na(fig_energy_efficiency)] <- 0
+fig_energy_efficiency <-
+  summarise(
+    fig_energy_efficiency,
+    total_savings = sum(`Incremental.Life.Cycle.Savings.Energy Savings (MWh).Total`),
+    total_cost = sum(
+      `Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Total` + `Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Total`
+    ),
+    total_res_savings = sum(
+      `Incremental.Life.Cycle.Savings.Energy Savings (MWh).Residential`
+    ),
+    total_res_cost = sum(
+      `Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Residential` + `Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Residential`
+    ),
+    total_com_savings = sum(
+      `Incremental.Life.Cycle.Savings.Energy Savings (MWh).Commercial`
+    ),
+    total_com_cost = sum(
+      `Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Commercial` + `Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Commercial`
+    ),
+    total_ind_savings = sum(
+      `Incremental.Life.Cycle.Savings.Energy Savings (MWh).Industrial`
+    ),
+    total_ind_cost = sum(
+      `Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Industrial` + `Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Industrial`
+    ),
+    total_trans_savings = sum(
+      `Incremental.Life.Cycle.Savings.Energy Savings (MWh).Transportation`
+    ),
+    total_trans_cost = sum(
+      `Incremental.Life.Cycle.Costs.Customer Incentives (Thousand Dollars).Transportation` + `Incremental.Life.Cycle.Costs.All Other Costs (Thousand Dollars).Transportation`
+    )
+  )
+
+fig_energy_efficiency$cost.per.kWh.savings <-
+  fig_energy_efficiency$total_cost / fig_energy_efficiency$total_savings
+
+## add highlight for WI
+fig_energy_efficiency$WI <- F
+fig_energy_efficiency[fig_energy_efficiency$State == "WI", "WI"] <-
+  T
+
+### Cost per Kilowatt Hour of Energy Efficiency Savings by Sector
+# State
+
+fig_energy_efficiency$cost.per.kWh.savings.res <-
+  fig_energy_efficiency$total_res_cost / fig_energy_efficiency$total_res_savings
+fig_energy_efficiency$cost.per.kWh.savings.com <-
+  fig_energy_efficiency$total_com_cost / fig_energy_efficiency$total_com_savings
+fig_energy_efficiency$cost.per.kWh.savings.ind <-
+  fig_energy_efficiency$total_ind_cost / fig_energy_efficiency$total_ind_savings
+
+# sector
+fig_energy_efficiency[is.na(fig_energy_efficiency)] <- 0
+# Manually set 1 outlier to infinite to make the chart look better. 
+# Note the value of the outlier on the comments of the chart.
+delaware_value <- round(fig_energy_efficiency[fig_energy_efficiency$State == "DE" & fig_energy_efficiency$`Data Year` == max(fig_energy_efficiency$`Data Year`), ]$cost.per.kWh.savings.com, digits = 0)
+fig_energy_efficiency[fig_energy_efficiency$State == "DE", "cost.per.kWh.savings.com"] <-
+  1 / 0
+
+# format dataframe for chart
+fig_energy_efficiency_sector <-
+  select(fig_energy_efficiency,-cost.per.kWh.savings)
+fig_energy_efficiency_sector <-
+  filter(fig_energy_efficiency_sector,
+         `Data Year` == max(fig_energy_efficiency$`Data Year`))
+fig_energy_efficiency_sector <-
+  pivot_longer(
+    fig_energy_efficiency_sector,
+    cols = contains("kWh"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+## Wisconsin IOUs do not report energy efficiency information because Focus
+## on Energy reports its own programs (and presumably the IOUs are conducting
+## 0 energy efficiency programs beyond that, so they have nothing more to report?
+
+### Energy Efficiency Savings as a Percentage of Electricity Sales
+## State
+total_energy_sales <-
+  group_by(electricity_utility_data_long, State, `Data Year`)
+total_energy_sales <- filter(total_energy_sales, Part != "C")
+total_energy_sales <-
+  summarise(
+    total_energy_sales,
+    total.usage = sum(total.Sales, na.rm = T),
+  )
+
+total_energy_customers <-
+  group_by(electricity_utility_data_long, State, `Data Year`)
+total_energy_customers <- filter(total_energy_customers, Part != "C" & Ownership != "Behind the Meter")
+total_energy_customers <-
+  summarise(
+    total_energy_customers,
+    total.customers = sum(total.Customers, na.rm = T)
+  )
+
+total_energy_revenues <-
+  group_by(electricity_utility_data_long, State, `Data Year`)
+total_energy_revenues <-
+  summarise(total_energy_revenues,
+            total.revenue = sum(total.Revenues, na.rm = T))
+
+fig_efficiency_per_sales <-
+  left_join(total_energy_sales,
+            total_energy_customers,
+            by = c("State", "Data Year"))
+fig_efficiency_per_sales <-
+  left_join(fig_efficiency_per_sales,
+            total_energy_revenues,
+            by = c("State", "Data Year"))
+
+fig_efficiency_per_sales <-
+  left_join(fig_energy_efficiency,
+            fig_efficiency_per_sales,
+            by = c("State", "Data Year"))
+
+
+## Because the total savings and total cost cannot be levelized by the expected lifetime of the project (there's no average expected lifetime for all sector projects)
+## It's necessary to calculate new numbers here for calculations that use values from other dataframes, e.g. total usage and total revenue.
+## Note again, cost per kWh saved could be calculated at a levelized way because (cost/lifetime) / (savings/lifetime) is the same as simply cost/savings. 
+
+# calculate total savings and total cost from levelized parts
+fig_efficiency_per_sales$total_savings <-
+  fig_efficiency_per_sales$total_res_savings + fig_efficiency_per_sales$total_com_savings + fig_efficiency_per_sales$total_ind_savings + fig_efficiency_per_sales$total_trans_savings
+
+fig_efficiency_per_sales$total_cost <-
+  fig_efficiency_per_sales$total_res_cost + fig_efficiency_per_sales$total_com_cost + fig_efficiency_per_sales$total_ind_cost + fig_efficiency_per_sales$total_trans_cost
+
+## calculate metric for graphs
+fig_efficiency_per_sales$savings_per_usage <-
+  fig_efficiency_per_sales$total_savings / fig_efficiency_per_sales$total.usage
+fig_efficiency_per_sales$savings_cost_per_sales_revenue <-
+  fig_efficiency_per_sales$total_cost / fig_efficiency_per_sales$total.revenue
+
+## change state names to full names
+fig_energy_efficiency <-
+  left_join(fig_energy_efficiency, crosswalk, by = "State")
+fig_energy_efficiency$State <-
+  str_to_title(fig_energy_efficiency$State_Name)
+fig_efficiency_per_sales <-
+  left_join(fig_efficiency_per_sales, crosswalk, by = "State")
+fig_efficiency_per_sales$State <-
+  str_to_title(fig_efficiency_per_sales$State_Name)
+fig_energy_efficiency_sector <-
+  left_join(fig_energy_efficiency_sector, crosswalk, by = "State")
+fig_energy_efficiency_sector$State <-
+  str_to_title(fig_energy_efficiency_sector$State_Name)
+
+## Wisconsin IOUs
+## see above
+
+### Demand response
+# read in data
+demand_response <-
+  read_excel(
+    "./Data/f8612021/Demand_Response_2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair
+  )
+## format data
+keep <-
+  c(which(colnames(demand_response) != ""), (ncol(demand_response) + 1))
+for (i in 2:length(keep)) {
+  colnames(demand_response)[keep[i - 1]:(keep[i] - 1)] <-
+    colnames(demand_response)[keep[i - 1]]
+}
+demand_response[1, 1] <- ""
+keep <-
+  c(which(!(is.na(demand_response[1, ]))), (ncol(demand_response) + 1))
+for (i in 2:length(keep)) {
+  demand_response[1, keep[i - 1]:(keep[i] - 1)] <-
+    demand_response[1, keep[i - 1]]
+}
+colnames(demand_response) <-
+  paste0(colnames(demand_response),
+         ".",
+         demand_response[1, ],
+         ".",
+         demand_response[2, ])
+demand_response <- demand_response[-c(1, 2), ]
+# keep necessary columns
+demand_response <-
+  select(demand_response,-`Utility.Characteristics..BA Code`)
+demand_response[, c(5:ncol(demand_response))] <-
+  apply(demand_response[, c(5:ncol(demand_response))], 2, function(x)
+    as.numeric(x))
+colnames(demand_response)[4] <- "State"
+demand_response <- filter(demand_response,!is.na(State))
+demand_response[is.na(demand_response)] <- 0
+
+# state
+demand_response_state <- group_by(demand_response, State)
+demand_response_state <-
+  summarise(
+    demand_response_state,
+    Enrolled = sum(
+      `Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Total`
+    ),
+    total.Saved = sum(
+      `Yearly.Energy.and.Demand.Savings.Energy Savings (MWh).Total`
+    ),
+    total.Potential.Peak.Saved = sum(
+      `Yearly.Energy.and.Demand.Savings.Potential Peak Demand Savings (MW).Total`
+    ),
+    total.DR.cost = sum(
+      `Program.Costs.Customer Incentives (Thousand Dollars).Total` + `Program.Costs.All Other Costs (Thousand Dollars).Total`
+    )
+  )
+
+## add highlight for WI
+demand_response_state$WI <- F
+demand_response_state[demand_response_state$State == "WI", "WI"] <-
+  T
+
+## change state names to full names
+demand_response_state <-
+  left_join(demand_response_state, crosswalk, by = "State")
+demand_response_state$State <-
+  str_to_title(demand_response_state$State_Name)
+
+## combine customer number data
+demand_response_state <-
+  left_join(demand_response_state,
+            filter(
+              fig_efficiency_per_sales,
+              `Data Year` == max(fig_efficiency_per_sales$`Data Year`)
+            ),
+            by = "State")
+demand_response_state$enrolled.per.customer <-
+  demand_response_state$Enrolled / demand_response_state$total.customers *
+  100 #changes units to a percentage
+
+# utility
+demand_response_utility <-
+  filter(
+    demand_response,
+    `Utility.Characteristics..Utility Name` %in% elec_IOUs &
+      State == "WI"
+  )
+colnames(demand_response_utility)[2] <- "Utility Number"
+demand_response_utility <-
+  left_join(demand_response_utility,
+            electricity_utility_data,
+            by = c("Utility Number", "State"))
+demand_response_utility$enrolled.per.customer <-
+  demand_response_utility$`Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Total` /
+  demand_response_utility$total.Customers * 100 #changes units to a percentage
+
+
+## % enrolled in demand response by sector - state
+demand_response_state_sector <- group_by(demand_response, State)
+demand_response_state_sector <-
+  summarise(
+    demand_response_state_sector,
+    res.Enrolled = sum(
+      `Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Residential`
+    ),
+    com.Enrolled = sum(
+      `Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Commercial`
+    ),
+    ind.Enrolled = sum(
+      `Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Industrial`
+    )
+  )
+
+electricity_customers_sector_state <-
+  group_by(filter(electricity_utility_data, Part != "C" & Ownership != "Behind the Meter"), State)
+electricity_customers_sector_state <-
+  summarise(
+    electricity_customers_sector_state,
+    res.Customers = sum(residential.Customers, na.rm = T),
+    com.Customers = sum(commercial.Customers, na.rm = T),
+    ind.Customers = sum(industrial.Customers, na.rm = T)
+  )
+
+
+demand_response_state_sector <-
+  left_join(demand_response_state_sector,
+            electricity_customers_sector_state,
+            by = "State")
+demand_response_state_sector$enrolled.per.customer.res <-
+  demand_response_state_sector$res.Enrolled / demand_response_state_sector$res.Customers *
+  100 #changes units to a percentage
+demand_response_state_sector$enrolled.per.customer.com <-
+  demand_response_state_sector$com.Enrolled / demand_response_state_sector$com.Customers *
+  100 #changes units to a percentage
+demand_response_state_sector$enrolled.per.customer.ind <-
+  demand_response_state_sector$ind.Enrolled / demand_response_state_sector$ind.Customers *
+  100 #changes units to a percentage
+
+## format dataframe for graphing
+demand_response_state_sector <-
+  pivot_longer(
+    demand_response_state_sector,
+    cols = contains("enrolled.per"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+## change state names to full names
+demand_response_state_sector <-
+  left_join(demand_response_state_sector, crosswalk, by = "State")
+demand_response_state_sector$State <-
+  str_to_title(demand_response_state_sector$State_Name)
+
+
+## % enrolled in demand response by sector - utilities
+demand_response_utility$enrolled.per.customer.res <-
+  demand_response_utility$`Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Residential` /
+  demand_response_utility$residential.Customers * 100 #changes units to a percentage
+demand_response_utility$enrolled.per.customer.com <-
+  demand_response_utility$`Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Commercial` /
+  demand_response_utility$commercial.Customers * 100 #changes units to a percentage
+demand_response_utility$enrolled.per.customer.ind <-
+  demand_response_utility$`Yearly.Energy.and.Demand.Savings.Number of Customers Enrolled.Industrial` /
+  demand_response_utility$industrial.Customers * 100 #changes units to a percentage
+
+## format names
+demand_response_utility <-
+  left_join(demand_response_utility, utility_names, by = "Utility Name")
+demand_response_utility$`Utility Name` <-
+  demand_response_utility$formatted_names
+
+## format dataframe for graphing
+demand_response_utility_sector <-
+  pivot_longer(
+    demand_response_utility,
+    cols = contains("enrolled.per.customer."),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+### Generation Type as a Percentage of Energy Mix
+# https://www.eia.gov/electricity/data/eia923/
+# read in data
+generators <-
+  read_excel(
+    "./Data/f923_2021/EIA923_Schedules_2_3_4_5_M_12_2021_Final.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    sheet = 1,
+    skip = 4
+  )
+
+## format data
+keep <- c(which(colnames(generators) != ""), (ncol(generators) + 1))
+for (i in 2:length(keep)) {
+  colnames(generators)[keep[i - 1]:(keep[i] - 1)] <-
+    colnames(generators)[keep[i - 1]]
+}
+colnames(generators) <-
+  paste0(colnames(generators), ".", generators[1, ])
+generators <- generators[-c(1), ]
+colnames(generators)[which(str_detect(colnames(generators), "State"))] <-
+  "State"
+colnames(generators)[which(str_detect(colnames(generators), "AER"))] <-
+  "Fuel"
+colnames(generators)[which(str_detect(colnames(generators), "Net Generation"))] <-
+  "Generation (MWh)"
+
+## EIA Sector Numbers:
+# 1: Electric Utility
+# 2: NAICS-22 Non-Cogen
+# 3: NAICS-22 Cogen
+# 4: Commercial NAICS Non-Cogen
+# 5: Commercial NAICS Cogen
+# 6: Industrial NAICS Non-Cogen
+# 7: Industrial NAICS Cogen
+## NAICS-22 are utilities
+
+generators <- filter(generators, `.EIA Sector Number` < 4) # keeps only utility related generators
+## sets key columns to numeric instead of character
+generators[, c(20:ncol(generators))] <-
+  apply(generators[, c(20:ncol(generators))], 2, function(x)
+    as.numeric(x))
+generators <- filter(generators,!is.na(State)) ## remove unneeded rows
+
+# generation overall
+
+## State
+generators_state <- group_by(generators, State, Fuel)
+generators_state <-
+  summarise(generators_state, generation = sum(`Generation (MWh)`, na.rm = T))
+
+## reorganize to make calculations easier
+generators_state <-
+  pivot_wider(generators_state,
+              names_from = Fuel,
+              values_from = generation)
+generators_state[is.na(generators_state)] <- 0
+
+## change state names to full names
+generators_state <-
+  left_join(generators_state, crosswalk, by = "State")
+generators_state$State <- str_to_title(generators_state$State_Name)
+
+generators_state_total <- generators_state
+
+### watch out that this is hard coded - any added or removed categories could
+### cause issues
+generators_state_total$coal <-
+  (generators_state_total$COL + generators_state_total$WOC)
+generators_state_total$renewables <-
+  (
+    generators_state_total$WWW + generators_state_total$HYC +
+      generators_state_total$HPS + generators_state_total$SUN + generators_state_total$GEO +
+      generators_state_total$WND + generators_state_total$ORW + generators_state_total$MLG
+  )
+generators_state_total$petroleum <-
+  (
+    generators_state_total$RFO + generators_state_total$DFO +
+      generators_state_total$PC + generators_state_total$WOO
+  )
+generators_state_total$other <-
+  (generators_state_total$OTH + generators_state_total$OOG)
+generators_state_total$nuclear <- generators_state_total$NUC
+generators_state_total$gas <- generators_state_total$NG
+
+## only keep states and the new columns
+generators_state_total <-
+  generators_state_total[c(1, which(
+    colnames(generators_state_total) == "coal"
+  ):ncol(generators_state_total))]
+
+## State figure
+## format dataframe for graphing
+fig_generators_state_total <-
+  pivot_longer(
+    generators_state_total,
+    cols = c(2:(ncol(
+      generators_state_total
+    ))),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+fig_generators_state_total$values <-
+  fig_generators_state_total$values / 10 ^ 6 ## change units to TWh
+
+## generation as percent of total
+generators_state_percent <- generators_state
+generators_state_percent$total <-
+  generators_state_percent$COL + generators_state_percent$WOC +
+  generators_state_percent$WWW + generators_state_percent$HYC + generators_state_percent$HPS +
+  generators_state_percent$SUN + generators_state_percent$GEO + generators_state_percent$WND +
+  generators_state_percent$ORW + generators_state_percent$MLG + generators_state_percent$RFO +
+  generators_state_percent$DFO + generators_state_percent$PC + generators_state_percent$WOO +
+  generators_state_percent$OTH + generators_state_percent$OOG + generators_state_percent$NUC +
+  generators_state_percent$NG
+generators_state_percent$coal <-
+  (generators_state_percent$COL + generators_state_percent$WOC) / generators_state_percent$total
+generators_state_percent$renewables <-
+  (
+    generators_state_percent$WWW + generators_state_percent$HYC +
+      generators_state_percent$HPS + generators_state_percent$SUN + generators_state_percent$GEO +
+      generators_state_percent$WND + generators_state_percent$ORW + generators_state_percent$MLG
+  ) / generators_state_percent$total
+generators_state_percent$petroleum <-
+  (
+    generators_state_percent$RFO + generators_state_percent$DFO +
+      generators_state_percent$PC + generators_state_percent$WOO
+  ) / generators_state_percent$total
+generators_state_percent$other <-
+  (generators_state_percent$OTH + generators_state_percent$OOG) / generators_state_percent$total
+generators_state_percent$nuclear <-
+  generators_state_percent$NUC / generators_state_percent$total
+generators_state_percent$gas <-
+  generators_state_percent$NG / generators_state_percent$total
+
+generators_state_percent <-
+  generators_state_percent[c(1, which(
+    colnames(generators_state_percent) == "coal"
+  ):ncol(generators_state_percent))]
+
+## format dataframe for graphing
+fig_generators_state_percent <-
+  pivot_longer(
+    generators_state_percent,
+    cols = c(2:ncol(generators_state_percent)),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+## Plant ownership shares
+owners <-
+  read_excel(
+    "./Data/eia8602021/4___Owner_Y2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    skip = 1
+  )
+
+## All NSPW information falls under NSP(Minn) in 923 and 860, but WI and MI plants
+## are the NSPW plants
+elec_IOUs <- c(elec_IOUs, "Northern States Power Co - Minnesota")
+
+owners <- filter(owners, Owner.Name %in% elec_IOUs)
+
+colnames(owners)[4] <- ".Plant Name"
+
+## There's extra information in Owners about specific generators at a specific
+## plant. The ownership share doesn't differ by generator, it's the same at
+## the plant level, so those duplicate rows are removed here, essentially turning
+## a generator-level dataframe into a plant-level dataframe. 
+owners <-
+  owners[!duplicated(paste0(owners$`.Plant Name`, owners$Owner.Name)), ]
+
+owners_gen <-
+  left_join(owners, generators, by = c(".Plant Name", "State"))
+owners_gen <- filter(owners_gen,!is.na(`.Plant Id`))
+
+## Each plant owner gets assigned the share of generation commenserate with its
+## ownership share
+owners_gen$`Generation (MWh)` <-
+  owners_gen$`Generation (MWh)` * owners_gen$Percent.Owned
+
+## Operator name is the plants primary owner, but we want to attribute generation
+## to the sub-owners as well, so we use owner name instead (doing this method
+## makes it easier to add the owners dataframe to the generators dataframe)
+owners_gen$`.Operator Name` <- owners_gen$Owner.Name
+
+owners_gen <- select(owners_gen, colnames(generators))
+
+## Wisconsin IOUs
+
+generators_utility <-
+  filter(generators, `.Operator Name` %in% elec_IOUs)
+
+generators_utility <-
+  filter(generators_utility,!(`.Plant Name` %in% unique(owners_gen$`.Plant Name`)))
+generators_utility <- rbind(generators_utility, owners_gen)
+
+## for NSPW
+NSPM <- c("MN", "SD", "ND")
+generators_utility <-
+  filter(
+    generators_utility,
+    !(
+      `.Operator Name` == "Northern States Power Co - Minnesota" &
+        State %in% NSPM
+    )
+  )
+
+plant_crosswalk <- generators_utility
+
+generators_utility <-
+  group_by(generators_utility, `.Operator Name`, Fuel)
+generators_utility <-
+  summarise(generators_utility,
+            generation.MWh = sum(`Generation (MWh)`, na.rm = T))
+
+generators_utility <-
+  pivot_wider(generators_utility,
+              names_from = Fuel,
+              values_from = generation.MWh)
+generators_utility[is.na(generators_utility)] <- 0
+
+## format names
+utility_names$`Utility Name`[2] <-
+  "Northern States Power Co - Minnesota"
+colnames(utility_names)[2] <- ".Operator Name"
+generators_utility <-
+  left_join(generators_utility, utility_names, by = ".Operator Name")
+generators_utility$`.Operator Name` <-
+  generators_utility$formatted_names
+
+generators_utility_total <- generators_utility
+
+## Note that I manually removed options that didn't exist for WI utilities(e.g. RFO, WOC, etc.)
+## Will need to be careful to make sure this doesn't exclude generation in other years
+generators_utility_total$coal <- generators_utility_total$COL
+generators_utility_total$renewables <-
+  (
+    generators_utility_total$WWW + generators_utility_total$HYC +
+      generators_utility_total$SUN +
+      generators_utility_total$WND + generators_utility_total$MLG
+  )
+generators_utility_total$petroleum <-
+  (generators_utility_total$DFO + generators_utility_total$WOO + generators_utility_total$PC)
+generators_utility_total$other <- (generators_utility_total$OTH)
+generators_utility_total$nuclear <- generators_utility_total$NUC
+generators_utility_total$gas <- generators_utility_total$NG
+
+generators_utility_total <-
+  generators_utility_total[c(1, which(
+    colnames(generators_utility_total) == "coal"
+  ):ncol(generators_utility_total))]
+
+## format dataframe for graphing
+fig_generators_utility_total <-
+  pivot_longer(
+    generators_utility_total,
+    cols = c(2:ncol(generators_utility_total)),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+fig_generators_utility_total$values <-
+  fig_generators_utility_total$values / 10 ^ 3 # Change units to GWh
+
+## generation as percent of total
+
+generators_utility_percent <- generators_utility_total
+generators_utility_percent$total <-
+  apply(generators_utility_percent[, -1], 1, sum)
+
+generators_utility_percent$coal <-
+  generators_utility_percent$coal / generators_utility_percent$total
+generators_utility_percent$gas <-
+  generators_utility_percent$gas / generators_utility_percent$total
+generators_utility_percent$petroleum <-
+  generators_utility_percent$petroleum / generators_utility_percent$total
+generators_utility_percent$renewables <-
+  generators_utility_percent$renewables / generators_utility_percent$total
+generators_utility_percent$other <-
+  generators_utility_percent$other / generators_utility_percent$total
+generators_utility_percent <-
+  select(generators_utility_percent,-total)
+
+## format dataframe for graphing
+fig_generators_utility_percent <-
+  pivot_longer(
+    generators_utility_percent,
+    cols = c(2:ncol(generators_utility_percent)),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+
+###	NOx, Sox, CO2 emissions from the electric power sector
+#https://www.eia.gov/electricity/data/emissions/
+#https://www.eia.gov/electricity/data/eia860/
+emissions_CO2 <-
+  read_excel(
+    "./Data/emissions2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    skip = 1,
+    sheet = 1
+  )
+emissions_SO2 <-
+  read_excel(
+    "./Data/emissions2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    skip = 1,
+    sheet = 2
+  )
+emissions_NOX <-
+  read_excel(
+    "./Data/emissions2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    skip = 1,
+    sheet = 3
+  )
+
+emissions <- full_join(emissions_CO2, emissions_SO2)
+emissions <- full_join(emissions, emissions_NOX)
+
+## Excludes "Industrial" and "Commercial"
+emissions <- filter(emissions, Sector.Group == "ELECTRIC POWER") 
+
+## State
+### See ReadMe on choice of metric to sum (there are alternative options).
+emissions_state <- group_by(emissions, State)
+emissions_state <- summarise(
+  emissions_state,
+  total_CO2 = sum(Tons.of.CO2.Emissions, na.rm = T),
+  total_SO2 = sum(`EIA.Model.Estimates.of.SO2.Emissions.(Tons)`, na.rm = T),
+  total_NOX = sum(`EIA.Model.Estimates.of.NOx.Emissions.(Tons)`, na.rm = T),
+  total_generation = sum(`Generation.(kWh)`, na.rm = T)
+)
+
+## add highlight for WI
+emissions_state$WI <- F
+emissions_state[emissions_state$State == "WI", "WI"] <- T
+
+## change state names to full names
+emissions_state <-
+  left_join(emissions_state, crosswalk, by = "State")
+emissions_state$State <- str_to_title(emissions_state$State_Name)
+
+## Wisconsin IOUs
+## incorporate partial ownership
+colnames(owners)[4] <- "Plant.Name"
+owners_emission <- full_join(emissions, owners)
+owners_emission <-
+  filter(owners_emission,!is.na(Percent.Owned) &
+           !is.na(Sector.Group))
+
+owners_emission$Tons.of.CO2.Emissions <-
+  owners_emission$Tons.of.CO2.Emissions * owners_emission$Percent.Owned
+owners_emission$`EIA.Model.Estimates.of.SO2.Emissions.(Tons)` <-
+  owners_emission$`EIA.Model.Estimates.of.SO2.Emissions.(Tons)` * owners_emission$Percent.Owned
+owners_emission$`EIA.Model.Estimates.of.NOx.Emissions.(Tons)` <-
+  owners_emission$`EIA.Model.Estimates.of.NOx.Emissions.(Tons)` * owners_emission$Percent.Owned
+owners_emission$`Generation.(kWh)` <-
+  owners_emission$`Generation.(kWh)` * owners_emission$Percent.Owned
+owners_emission$Utility.Name <- owners_emission$Owner.Name
+
+emissions <-
+  filter(emissions,!(Plant.Name %in% unique(owners_emission$Plant.Name)))
+
+## needed for determining owners of plants, since the emissions dataframe
+## doesn't include that information
+plant_crosswalk <-
+  read_excel(
+    "./Data/eia8602021/2___Plant_Y2021.xlsx",
+    na = c("", "."),
+    .name_repair = name_repair,
+    skip = 1
+  )
+
+emissions_utility <-
+  left_join(emissions,
+            plant_crosswalk,
+            by = c("Plant.Code", "Plant.Name", "State"))
+
+emissions_utility <-
+  filter(emissions_utility, Utility.Name %in% elec_IOUs)
+emissions_utility <- select(emissions_utility,-contains(".x")) #removes columns that are duplicate between files
+emissions_utility <- emissions_utility[, c(1:which(colnames(emissions_utility) == "Utility.Name"))] # remove superfluous columns
+owners_emission <-
+  select(owners_emission, colnames(emissions_utility)) #match columns to allow combining
+emissions_utility <- rbind(emissions_utility, owners_emission)
+
+##For NSPW
+emissions_utility <-
+  filter(
+    emissions_utility,
+    !(
+      Utility.Name == "Northern States Power Co - Minnesota" &
+        State %in% NSPM
+    )
+  )
+
+emissions_utility <- group_by(emissions_utility, Utility.Name)
+emissions_utility <- summarise(
+  emissions_utility,
+  total_CO2 = sum(Tons.of.CO2.Emissions, na.rm = T),
+  total_SO2 = sum(`EIA.Model.Estimates.of.SO2.Emissions.(Tons)`, na.rm = T),
+  total_NOX = sum(`EIA.Model.Estimates.of.NOx.Emissions.(Tons)`, na.rm = T),
+  total_generation = sum(`Generation.(kWh)`, na.rm = T)
+)
+
+### NOx, Sox, CO2 emissions intensity from the electricity sector
+emissions_state$CO2_intensity <-
+  emissions_state$total_CO2 / (emissions_state$total_generation / 1000) #changes units to Tons per MWh of generation
+emissions_state$SO2_intensity <-
+  emissions_state$total_SO2 / (emissions_state$total_generation / 1000) #changes units to Tons per MWh of generation
+emissions_state$NOX_intensity <-
+  emissions_state$total_NOX / (emissions_state$total_generation / 1000) #changes units to Tons per MWh of generation
+
+## Wisconsin IOUs
+emissions_utility$CO2_intensity <-
+  emissions_utility$total_CO2 / (emissions_utility$total_generation / 1000) #changes units to Tons per MWh of generation
+emissions_utility$SO2_intensity <-
+  emissions_utility$total_SO2 / (emissions_utility$total_generation / 1000) #changes units to Tons per MWh of generation
+emissions_utility$NOX_intensity <-
+  emissions_utility$total_NOX / (emissions_utility$total_generation / 1000) #changes units to Tons per MWh of generation
+
+#format names
+colnames(utility_names)[2] <- "Utility.Name"
+emissions_utility <-
+  left_join(emissions_utility, utility_names, by = "Utility.Name")
+emissions_utility$Utility.Name <- emissions_utility$formatted_names
+
+## figure number counter
+j <- 1
+```
+
+# Introduction
+
+Every day we rely upon our utilities to provide us with electricity and gas on-demand. But what do you know about your utility? How well is it doing its job, relative to the other utilities in the U.S.? 
+
+This report is aimed towards answering your basic questions about utilities. We're also making all of the resources used to produce this report available to the public so that anyone can replicate the report, whether to explore a different state or to update it with newer data. 
+
+# Methodology
+
+This report relies on publicly available data, primarily data gathered and published by the Energy Information Administration (EIA) and also data from the U.S. Census and Environmental Protection Agency (EPA).
+
+One of the major goals of this report is for it to be fully transparent and repeatable. As such, we cite sources directly on each figure. We have also uploaded a ReadMe file with more details on the methodology of this report and all data and code used to produce it onto CUB WI’s github repository at https://github.com/CUBWI/2023-Utility-Report-Card. You can reach us through our website for any further questions: www.cubwi.org.
+
+\pagebreak
+
+# Reliability
+
+One of the objectives of this report is to compare the reliability of the utilities tasked with serving electricity and natural gas to customers across the U.S. The following charts do just that, beginning with the reliability of utility electricity distribution systems and proceeding to the reliability of utility natural gas distribution systems.
+
+## Electric Power
+
+The report’s first set of charts shows how utilities compare in terms of reliability. We present three “interruption indices,” the System Average Interruption Duration Index (SAIDI), the System Average Interruption Frequency Index (SAIFI), and the Customer Average Interruption Duration Index (CAIDI).
+
+### Background on Metrics
+
+A utility calculates SAIDI, SAIFI, and CAIDI for each “nonmomentary outage” that occurs on its system.\footnote{The IEEE defines a nonmomentary outage as one that lasts for five minutes or longer.} The EIA then publishes annual metrics from the utility data, representing the sum of each metric across a calendar year. The charts below present these annual figures (See our ReadMe for further information on the IEEE standard and details on these interruption indices)
+
+For a single nonmomentary outage, CAIDI measures the duration, in minutes, of the outage, and SAIFI measures the proportion of a system’s customers affected by the outage. SAIDI is the product of CAIDI and SAIFI. As such, the sum of annual SAIDI values for a utility represents, in a single number, its reliability for that year. We therefore present SAIDI first, followed by its components, SAIFI and CAIDI.
+
+The indices presented are split between those that are “without Major Event Days” and those that are “with Major Event Days.” Major Event Days (MEDs) are days on which the total SAIDI value for that day is so high as to be considered an outlier. MEDs are an attempt to account for outages caused by things beyond the control of a utility, for example, a major weather event such as a tornado (Note: because the MED threshold is calculated using the past 5 years of data, if a utility’s region consistently has bad weather and the utility fails to adjust to that, for example by failing to bury electricity polls underground, the outages caused by that weather will eventually fall below the MED threshold - again, see our ReadMe file for more details). As such, SAIDI without MEDs presents the reliability of an electricity grid during day-to-day operations.
+
+Because SAIDI without MEDs represents the reliability of a utility’s electric grid on an average day, we believe that, compared to SAIDI with MEDs, it better indicates how well utilities are meeting their obligations to their customers. As such, we present the “without MED” charts first. A customer may be more interested, though, in understanding how their own outage experience overall compares to other states or to major Wisconsin utilities, so we provide the “with MEDs” charts next.
+
+### Excluding Alternative Measurement Standards
+
+Some utilities use standards other than the IEEE for calculating reliability metrics. The EIA data lacks the information necessary to discern how, precisely, an alternative standard differs from the IEEE standard. For this reason, reliability metrics published under alternative standards are not directly comparable to IEEE standard. As such, in all but one case (see below) we have chosen to remove non-IEEE standard data from the following charts.
+
+### Wisconsin Power & Light
+
+Wisconsin Power & Light is included in the following charts despite the fact that it does not use the IEEE standard. According to staff at WP&L, the utility calculates nonmomentary outages as described above (i.e. any outage longer than five minutes is nonmomentary) but follows the Iowa Utility Board’s (IUB) definition for a “Major event” (Iowa Administrative Code 199 §20.18(4))\footnote{This reads, in part: “Major event” will be declared whenever extensive physical damage to transmission and distribution facilities has occurred within an electric utility’s operating area due to unusually severe and abnormal weather or event and:
+1. Wind speed exceeds 90 mph for the affected area, or
+2. One-half inch of ice is present and wind speed exceeds 40 mph for the affected area, or
+3. Ten percent of the affected area total customer count is incurring a loss of service for a length of time to exceed five hours, or
+4. 20,000 customers in a metropolitan area are incurring a loss of service for a length of time to exceed five hours.
+}, which differs from the IEEE’s “Major Event Day” standard. Still, while we did not have the data necessary to compare the two standards, staff said that the results of the two standards are similar.
+
+Because the only difference between the two standards is the definition of MED, WP&L’s metrics with MEDs are directly comparable to the other utilities’ metrics with MEDs. However, readers should be mindful when comparing WP&L’s metrics without MEDs to other utilities’ metrics without MEDs, since we were not able to quantify the difference between the two standards.
+
+### Takeaways
+
+There are three caveats to consider when looking at the following charts. First, “without MED” values can be correlated with “with MED” values as explained in the following example: Imagine a storm was to occur at 10 pm on Monday and cause widespread outages that ended at 2 am on Wednesday. The 24 hours of outage on Tuesday would likely put Tuesday above the utility’s MED threshold, but both Monday’s and Wednesday’s outages, only two hours each, may not surpass the MED threshold even though they are part of the same event that made Tuesday an MED.
+
+Second, there are likely characteristics inherent to certain electric systems that make them more prone to outages, such as a larger service area. All else equal, a larger service area would mean there are more distribution lines that could face interference from animals, trees, or other things. This could explain why MG&E and Superior (which have smaller service areas) have lower SAIDI values than WEPCO and WP&L. In future reports, we will look to provide metrics that account for such differences in systems and provide a better apples-to-apples comparison.
+
+The final caveat is simply that while there are costs associated with outages, there are also costs associated with maintaining a reliable system. Creating a system that never has outages would be incredibly expensive. When considering how well a utility or a state’s utilities seem to be performing in terms of reliability, it is also worth considering how much the average user pays for that performance. 
+
+## Electricity Distribution Reliability - Without Major Event Days
+
+```{r SAIDI_noMED_state}
+order <- arrange(state_reliability, SAIDI.Without.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Duration Index (SAIDI)")
+
+g <-
+  ggplot(state_reliability, aes(y = SAIDI.Without.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average SAIDI without Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r SAIDI_noMED_utility}
+WI_utility_reliability[WI_utility_reliability$`Utility\nName` == "Wisconsin Power\nand Light Company\n", "Utility\nName"] <-
+  "Wisconsin Power\nand Light Company*\n"
+
+WI_utility_reliability_max <-
+  filter(WI_utility_reliability,
+         Data.Year == max(WI_utility_reliability$Data.Year))
+
+order <- arrange(WI_utility_reliability_max, SAIDI.Without.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Duration Index (SAIDI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = SAIDI.Without.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "SAIDI without Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability \n* WP&L uses a standard different from the IEEE standard to calculate MEDs",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_noMED_state}
+order <- arrange(state_reliability, SAIFI.Without.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Frequency Index (SAIFI)")
+
+g <-
+  ggplot(state_reliability, aes(y = SAIFI.Without.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average SAIFI without Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "SAIFI",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_noMED_utility}
+order <- arrange(WI_utility_reliability_max, SAIFI.Without.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Frequency Index (SAIFI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = SAIFI.Without.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "SAIFI without Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "SAIFI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability \n* WP&L uses a standard different from the IEEE standard to calculate MEDs",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_noMED_state}
+order <- arrange(state_reliability, CAIDI.Without.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Customer Average Interruption Duration Index (CAIDI)")
+
+g <-
+  ggplot(state_reliability, aes(y = CAIDI.Without.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average CAIDI without Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_noMED_utility}
+order <- arrange(WI_utility_reliability_max, CAIDI.Without.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Customer Average Interruption Duration Index (CAIDI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = CAIDI.Without.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "CAIDI without Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability \n* WP&L uses a standard different from the IEEE standard to calculate MEDs",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+
+## Electricity Distribution Reliability - With Major Event Days
+
+```{r SAIDI_state}
+order <- arrange(state_reliability, SAIDI.With.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Duration Index (SAIDI)")
+
+g <-
+  ggplot(state_reliability, aes(y = SAIDI.With.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average SAIDI with Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r SAIDI_utility}
+WI_utility_reliability_max[WI_utility_reliability_max$`Utility\nName` == "Wisconsin Power\nand Light Company*\n", "Utility\nName"] <-
+  "Wisconsin Power\nand Light Company\n"
+
+order <- arrange(WI_utility_reliability_max, SAIDI.With.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Duration Index (SAIDI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = SAIDI.With.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "SAIDI with Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_state}
+order <- arrange(state_reliability, SAIFI.With.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Frequency Index (SAIFI)")
+
+g <-
+  ggplot(state_reliability, aes(y = SAIFI.With.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average SAIFI with Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "SAIFI",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_utility}
+order <- arrange(WI_utility_reliability_max, SAIFI.With.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": System Average Interruption Frequency Index (SAIFI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = SAIFI.With.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "SAIFI with Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "SAIFI",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_state}
+order <- arrange(state_reliability, CAIDI.With.MED)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Customer Average Interruption Duration Index (CAIDI)")
+
+g <-
+  ggplot(state_reliability, aes(y = CAIDI.With.MED, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average CAIDI with Major Event Days in 2021 of Utility Operations in a State",
+  "State",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_utility}
+order <- arrange(WI_utility_reliability_max, CAIDI.With.MED)
+order <- order$`Utility\nName`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Customer Average Interruption Duration Index (CAIDI)")
+
+g <-
+  ggplot(WI_utility_reliability_max,
+         aes(y = CAIDI.With.MED, x = `Utility\nName`)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "CAIDI with Major Event Days in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2021, Reliability",
+  "none",
+  0
+)
+g
+
+j <- j + 1
+```
+
+## Reliability Over Time
+
+We include below six more graphs that provide some historic context for the most recent reliability figures from Wisconsin's publicly-traded utilities. These charts use all of the reliability data currently available, which goes back to 2013. 
+
+### Takeaways
+
+Again, remember that the "Without Major Event Days" and "With Major Event Days" charts are showing related but different things. The "Without Major Event Days" covers how well the utilities have been able to improve how their distribution systems function in their day-to-day operations. From this perspective, customers of the Wisconsin Electric Power Company, for example, would be right to feel worried about the steady increase in interruption frequency and duration that has been occurring since 2017 (this is most visible in the SAIDI graph, but a trend is clear in all three). 
+
+The "With Major Event Days" charts, meanwhile, show how much the distribution systems of these utilities are affected by events beyond their control - what is under their control, of course, is how prepared they are for such events. Still, given the variability of weather in each year, it is difficult to take away any clear narrative from these charts beyond details on the experience of customers over the past several years.
+
+## Electricity Distribution Reliability, Over Time - Without Major Event Days
+
+```{r SAIDI_woMED_long}
+title <-
+  paste0("Figure ", j, ": SAIDI without Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = SAIDI.Without.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "System Average Interruption Duration Index without Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_woMED_long}
+title <-
+  paste0("Figure ", j, ": SAIFI without Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = SAIFI.Without.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "System Average Interruption Frequency Index without Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "SAIFI",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_woMED_long}
+title <-
+  paste0("Figure ", j, ": CAIDI without Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = CAIDI.Without.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "Customer Average Interruption Duration Index without Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+## Electricity Distribution Reliability, Over Time - With Major Event Days
+
+```{r SAIDI_wMED_long}
+WI_utility_reliability[WI_utility_reliability$`Utility\nName` == "Wisconsin Power\nand Light Company*\n", "Utility\nName"] <-
+  "Wisconsin Power\nand Light Company\n"
+
+title <-
+  paste0("Figure ", j, ": SAIDI with Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = SAIDI.With.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "System Average Interruption Duration Index with Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "SAIDI (Minutes)",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+```{r SAIFI_wMED_long}
+title <-
+  paste0("Figure ", j, ": SAIFI with Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = SAIFI.With.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "System Average Interruption Frequency Index with Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "SAIFI",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+```{r CAIDI_wMED_long}
+title <-
+  paste0("Figure ", j, ": CAIDI with Major Event Days Over Time")
+
+g <-
+  ggplot(
+    WI_utility_reliability,
+    aes(
+      y = CAIDI.With.MED,
+      x = Data.Year,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <- format_graph(
+  g,
+  title,
+  "Customer Average Interruption Duration Index with Major Event Days from 2013 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Year",
+  "CAIDI (Minutes)",
+  "Data Source: EIA-861, 2013 - 2021, Reliability",
+  "bottom",
+  90
+)
+g
+
+j <- j + 1
+```
+
+## Natural Gas Systems
+
+These next graphs assess the reliability of a utility’s natural gas distribution system. They do so by showing reported levels of “lost gas” from utilities, which is the amount of natural gas that each utility reported lost as a “natural consequence of distribution activities.” This covers both known and estimated losses and is separate from “unaccounted for gas,” which is the difference between the total reported gas supplied to a utility and the total reported distributed gas for that utility (the latter is referred to as “total disposition”). In fact, when calculating the total disposition, lost gas is included in that total.
+
+This section begins by looking at total lost gas. Given the health and economic
+impacts of leaking natural gas, this gross value is important to track. That said, as seen below, there is a clear correlation between high lost gas volumes and having a strong natural gas distribution economy (e.g. Texas, Louisiana, Pennsylvania) and/or a high population (e.g. California, New York).
+
+In an attempt to account for these correlations, the second pair of graphs show what portion of the total disposition of natural gas for a utility comes from that lost gas value.
+
+### Takeaways
+
+One thing that jumps out from these charts is how leaky the distribution system seems to be in the District of Columbia. One possible explanation for this is that DC has zero industrial customers, but a large number of residential customers. Since residential customers do not use nearly the volume of gas that industrial customers use, this might mean that for the volume of gas sold, there is a greater mileage of distribution system in DC than in other states (each resident needs their own connection and each connection could have a leak).
+
+That said, a high leakage rate can also simply indicate poor overall infrastructure. Every leak corresponds to an unnecessary cost that utilities then pass on to customers. For this reason, it is a valuable metric to track.
+
+
+```{r lost_gas_state}
+order <- arrange(fig_lost_gas_state, Lost.Gas)
+order <- order$State
+
+title <- paste0("Figure ", j, ": Lost Natural Gas")
+
+g <-
+  ggplot(fig_lost_gas_state, aes(y = Lost.Gas, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Cummulative Lost Natural Gas in 2021 for Utility Operations in a State",
+    "State",
+    "Lost Gas (Billions of Cubic Feet)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+
+g
+
+j <- j + 1
+```
+
+```{r lost_gas_utility}
+order <-
+  arrange(filter(fig_lost_gas_utility, YEAR == max(gas$YEAR)), Lost.Gas)
+order <- order$NAME1
+
+title <- paste0("Figure ", j, ": Lost Natural Gas")
+
+g <-
+  ggplot(filter(fig_lost_gas_utility, YEAR == max(gas$YEAR)),
+         aes(y = Lost.Gas, x = NAME1)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Lost Natural Gas in 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Lost Gas (Millions of Cubic Feet)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+
+```{r lost_gas_per_disposition_state}
+order <-
+  arrange(fig_lost_gas_bydisposition_state,
+          Lost.Gas.percent.of.disposition)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Lost Natural Gas as Percent of Total Gas Distributed")
+
+g <-
+  ggplot(
+    fig_lost_gas_bydisposition_state,
+    aes(y = Lost.Gas.percent.of.disposition, x = State, fill = WI)
+  ) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Lost Gas per Total Disposition of Gas in 2021 of Utility Operations in a State",
+    "State",
+    "Percent (%)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r lost_gas_per_disposition_utility}
+order <-
+  arrange(
+    filter(fig_lost_gas_bydisposition_utility, YEAR == max(gas$YEAR)),
+    Lost.Gas.percent.of.disposition
+  )
+order <- order$NAME1
+
+title <-
+  paste0("Figure ", j, ": Lost Natural Gas as Percent of Total Gas Distributed")
+
+g <-
+  ggplot(
+    filter(fig_lost_gas_bydisposition_utility, YEAR == max(gas$YEAR)),
+    aes(y = Lost.Gas.percent.of.disposition, x = NAME1)
+  ) +
+  geom_bar(stat = "identity", fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Lost Gas per Total Disposition of Gas in 2021 for Publicly-Owned Utilities Operating in Wisconsin",
+    "State",
+    "Percent (%)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r lost_gas_utility_long}
+title <- paste0("Figure ", j, ": Lost Natural Gas Over Time")
+
+
+fig_lost_gas_utility <- filter(fig_lost_gas_utility, YEAR >= 2010)
+fig_lost_gas_utility[fig_lost_gas_utility$NAME1 == "Wisconsin Public\nService Corporation", "NAME1"] <-
+  "Wisconsin\nPublic\nService\nCorporation"
+fig_lost_gas_utility[fig_lost_gas_utility$NAME1 == "Madison Gas and\nElectric Company\n", "NAME1"] <-
+  "Madison Gas\nand Electric\nCompany\n"
+fig_lost_gas_utility[fig_lost_gas_utility$NAME1 == "Northern States\nPower - Wisconsin", "NAME1"] <-
+  "Northern States\nPower -\nWisconsin"
+fig_lost_gas_utility[fig_lost_gas_utility$NAME1 == "Superior Water, Light\nand Power Company\n", "NAME1"] <-
+  "Superior Water,\nLight and\nPower Company\n"
+fig_lost_gas_utility[fig_lost_gas_utility$NAME1 == "Wisconsin Power\nand Light Company\n", "NAME1"] <-
+  "Wisconsin Power\nand Light\nCompany"
+
+colnames(fig_lost_gas_utility)[which(colnames(fig_lost_gas_utility) == "NAME1")] <-
+  "Utility\nName"
+
+fig_lost_gas_utility$YEAR <-
+  mdy(paste0("1/1/", fig_lost_gas_utility$YEAR))
+
+g <-
+  ggplot(
+    fig_lost_gas_utility,
+    aes(
+      y = Lost.Gas,
+      x = YEAR,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Lost Natural Gas from 2013 to 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Lost Gas (Millions of Cubic Feet)",
+    "Data Source: EIA-176, 2013-2021",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+```{r lost_gas_per_disposition_utility_long}
+title <-
+  paste0("Figure ",
+         j,
+         ": Lost Natural Gas as Percent of Gas Distributed Over Time")
+
+fig_lost_gas_bydisposition_utility <-
+  filter(fig_lost_gas_bydisposition_utility, YEAR >= 2010)
+
+fig_lost_gas_bydisposition_utility[fig_lost_gas_bydisposition_utility$NAME1 == "Wisconsin Public\nService Corporation", "NAME1"] <-
+  "Wisconsin\nPublic\nService\nCorporation"
+fig_lost_gas_bydisposition_utility[fig_lost_gas_bydisposition_utility$NAME1 == "Madison Gas and\nElectric Company\n", "NAME1"] <-
+  "Madison Gas\nand Electric\nCompany\n"
+fig_lost_gas_bydisposition_utility[fig_lost_gas_bydisposition_utility$NAME1 == "Northern States\nPower - Wisconsin", "NAME1"] <-
+  "Northern States\nPower -\nWisconsin"
+fig_lost_gas_bydisposition_utility[fig_lost_gas_bydisposition_utility$NAME1 == "Superior Water, Light\nand Power Company\n", "NAME1"] <-
+  "Superior Water,\nLight and\nPower Company\n"
+fig_lost_gas_bydisposition_utility[fig_lost_gas_bydisposition_utility$NAME1 == "Wisconsin Power\nand Light Company\n", "NAME1"] <-
+  "Wisconsin Power\nand Light\nCompany"
+colnames(fig_lost_gas_bydisposition_utility)[which(colnames(fig_lost_gas_bydisposition_utility) == "NAME1")] <-
+  "Utility\nName"
+
+fig_lost_gas_bydisposition_utility$YEAR <-
+  mdy(paste0("1/1/", fig_lost_gas_bydisposition_utility$YEAR))
+
+g <-
+  ggplot(
+    fig_lost_gas_bydisposition_utility,
+    aes(
+      y = Lost.Gas.percent.of.disposition,
+      x = YEAR,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Lost Natural Gas from 2013 to 2021 for Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Percent (%)",
+    "Data Source: EIA-176, 2013-2021",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+
+# Heating Fuel
+
+The following graph uses American Community Survey data to show the heating characteristics of households within different states in the U.S. as well as Puerto Rico and the District of Columbia. Survey respondents are asked “Which FUEL is used MOST for heating this house, apartment or mobile home?”
+
+### Takeaways
+
+These data are valuable context for when we move on to charts about the costs of residential gas and electricity. For example, Utah’s households will be more negatively impacted by a rise in gas prices than Florida’s households, all else equal.
+
+Another thing to consider when looking at this graph is that, through the "other" category, it suggests which states have the best opportunity to improve the costs associated with residential heating systems. 
+
+The "other" category is primarily made up of heating oil and bottled gas, such as propane. These are both relatively expensive fuels and while they were previously necessary for households that did not have access to natural gas infrastructure, modern electric heat pumps generally provide cost and emissions savings over heating oil and bottled gas systems. With this in mind, as shown in figure `r j`, states such as Maine, Vermont, and New Hampshire have a great opportunity for lower residential heating bills through a transition towards electric heat pumps.
+
+As a cautionary note, the efficiency of heat pumps does not necessarily mean that those states with a high proportion of households heating with electricity are doing so efficiently or cheaply. While heat pumps have efficiency levels high enough to provide cost savings over alternative heating methods, electric resistance heating (i.e. baseboards) is much less efficient. Hopefully, future surveys will distinguish between electric resistance and electric heat pump heating to provide a better sense of the efficiency of a state’s residential heating.
+
+```{r heating_fuel_state}
+order <- arrange(heating_fuel_source, perc_electric)
+order <- order$State
+
+hue <- length(unique(fig_heating_fuel_source$variable))
+
+fig_heating_fuel_source$variable <-
+  factor(
+    fig_heating_fuel_source$variable,
+    levels = c(
+      'perc_no_heating',
+      'perc_other_heating',
+      'perc_gas',
+      'perc_electric'
+    )
+  )
+
+title <- paste0("Figure ", j, ": Household Heating by Fuel Source")
+
+g <-
+  ggplot(fig_heating_fuel_source,
+         aes(y = values, x = State_Name, fill = variable)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Percent of Households Heating by Fuel Source in 2021 by State",
+    "State",
+    "Percent of Households (%)",
+    "Data Source: U.S. Census, American Community Survey 2021 5-Year Estimates, B25040",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c(
+      "perc_electric",
+      "perc_gas",
+      "perc_other_heating",
+      "perc_no_heating"
+    ),
+    c("Electric", "Gas", "Other", "No Heating"),
+    hue_pal()(hue),
+    "Fuel Type"
+  )
+
+g
+
+j <- j + 1
+```
+
+# Electricity Profiles
+
+The following charts provide some basic, electricity-related information on residential households. Included is the amount of electricity used, the total amount spent on electricity, and the average cost of that electricity. Data is provided at the state level and for the 6 publicly-traded Wisconsin utilities. 
+
+Calculating these aggregate numbers correctly from the utility-level data can be tricky, especially for utilities operating in states that allow households to choose their energy providers. Anyone hoping to recreate these charts for their own purposes should look at the ReadMe file available at https://github.com/CUBWI/2023-Utility-Report-Card to ensure they're doing so correctly. 
+
+### Takeaways
+
+What explains the significant jump in electricity cost for the Wisconsin Electric Power Company (WEPCO) and Madison Gas & Electric (MG&E)? 
+
+The reliability charts indicated that WEPCO had the worst outage performance of all six Wisconsin utilities that we highlighted in 2021. So is it fair that they also have the second highest electricity rate?
+
+Meanwhile, MG&E at least provides reliable power to its residential customers for the rates it charges. But is its good reliability simply a function of its relatively small service footprint? If so, is MG&E overcharging for a level of reliability that is actually relatively cheap for them to provide?
+
+```{r electricity_use_residential_state}
+order <- arrange(fig_elec_use_state, residential.usage.per.customer)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Electricity Use per Residential Customer")
+
+
+g <-
+  ggplot(fig_elec_use_state,
+         aes(y = residential.usage.per.customer, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount of Electricity used by Residential Customers in 2021 by State",
+    "State",
+    "Usage (kWh)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r electricity_use_residential_utility}
+temp <-
+  filter(fig_elec_use_utility,
+         `Data Year` == max(fig_elec_use_utility$`Data Year`))
+
+order <- arrange(temp, residential.usage.per.customer)
+order <- order$`Utility Name`
+
+title <-
+  paste0("Figure ", j, ": Electricity Use per Residential Customer")
+
+g <-
+  ggplot(temp, aes(y = residential.usage.per.customer, x = `Utility Name`)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount of Electricity used by Residential Customers in 2021 \nfor Publicy-Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Usage (kWh)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r electricity_expenditures_residential_state}
+order <-
+  arrange(fig_elec_expend_state,
+          residential.expenditures.per.customer)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Electricity Expenditures per Residential Customer")
+
+g <-
+  ggplot(
+    fig_elec_expend_state,
+    aes(y = residential.expenditures.per.customer, x = State, fill = WI)
+  ) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount Spent on Electricity by Residential Customers in 2021 by State",
+    "State",
+    "Expenditures ($)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r electricity_expenditures_residential_utility}
+temp <-
+  filter(fig_elec_expend_utility,
+         `Data Year` == max(fig_elec_expend_utility$`Data Year`))
+
+order <- arrange(temp, residential.expenditures.per.customer)
+order <- order$`Utility Name`
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Electricity Expenditures per Residential Customer")
+
+g <-
+  ggplot(temp,
+         aes(y = residential.expenditures.per.customer, x = `Utility Name`)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount Spent on Electricity by Residential Customers in 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Expenditures ($)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r electricity_cost_residential_state}
+order <- arrange(fig_elec_cost_state, residential.cost.per.kWh)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Electricity Cost per kWh for Residential Customers")
+
+g <-
+  ggplot(fig_elec_cost_state,
+         aes(y = residential.cost.per.kWh, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Electricity Used by Residential Customers in 2021 by State",
+    "State",
+    "Cost (Cents/kWh)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r electricity_cost_residential_utility}
+temp <-
+  filter(fig_elec_cost_utility,
+         `Data Year` == max(fig_elec_cost_utility$`Data Year`))
+order <- arrange(temp, residential.cost.per.kWh)
+order <- order$`Utility Name`
+
+title <-
+  paste0("Figure ", j, ": Electricity Cost per kWh for Residential Customers")
+
+g <-
+  ggplot(temp, aes(y = residential.cost.per.kWh, x = `Utility Name`)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Electricity Used by Residential Customers in 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility Name",
+    "Cost (Cents/kWh)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+## Electricity Costs Over Time
+
+We felt that cost was the most interesting of the three measurements to track over time. The following two charts present electricity costs for six Wisconsin IOUs since 2003, first in absolute terms and second as a growth rate (with 2011 as the baseyear for Superior and 2003 as the base year for the other five utilities). 
+
+```{r electricity_cost_residential_utility_long}
+title <-
+  paste0("Figure ",
+         j,
+         ": Electricity Cost per kWh\nfor Residential Customers Over Time")
+
+fig_elec_cost_utility$`Data Year` <-
+  mdy(paste0("1/1/", fig_elec_cost_utility$`Data Year`))
+
+colnames(fig_elec_cost_utility)[which(colnames(fig_elec_cost_utility) == "Utility Name")] <-
+  "Utility\nName"
+
+g <-
+  ggplot(
+    fig_elec_cost_utility,
+    aes(
+      y = residential.cost.per.kWh,
+      x = `Data Year`,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Electricity Used by Residential Customers between 2003 and 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Cost (Cents/kWh)",
+    "Data Source: EIA-861, 2003-2021, Sales to Ultimate Customers",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+```{r electricity_cost_residential_utility_long_growth}
+title <-
+  paste0("Figure ",
+         j,
+         ": Growth of Electricity Cost per kWh\nfor Residential Customers Over Time")
+
+fig_elec_cost_utility <- arrange(fig_elec_cost_utility, `Data Year`)
+
+for (i in unique(fig_elec_cost_utility$`Utility\nName`)) {
+  temp <- filter(fig_elec_cost_utility, `Utility\nName` == i)
+  base <- temp[1,]$residential.cost.per.kWh
+  fig_elec_cost_utility[fig_elec_cost_utility$`Utility\nName` == i,]$residential.cost.per.kWh <-
+    fig_elec_cost_utility[fig_elec_cost_utility$`Utility\nName` == i,]$residential.cost.per.kWh /
+    base
+}
+
+g <-
+  ggplot(
+    fig_elec_cost_utility,
+    aes(
+      y = residential.cost.per.kWh,
+      x = `Data Year`,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Growth of Average Cost of Electricity Used by Residential Customers between 2003 and 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Cost (Growth Multiplier)",
+    "Data Source: EIA-861, 2003-2021, Sales to Ultimate Customers\nValues are the factor increase in cost, so 1.5 means costs are\n1.5 times higher than they were during the base year",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+# Natural Gas Profiles
+
+```{r gas_use_residential_state}
+order <- arrange(gas_residential_state, use.per.res.customer)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Natural Gas Use per Residential Customer")
+
+g <-
+  ggplot(gas_residential_state,
+         aes(y = use.per.res.customer, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount of Natural Gas used by Residential Customers in 2021 by State",
+    "State",
+    "Usage (Therm)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r gas_use_residential_utility}
+temp <- filter(gas_residential_utility, YEAR == max(gas$YEAR))
+order <- arrange(temp, use.per.res.customer)
+order <- order$NAME1
+
+title <-
+  paste0("Figure ", j, ": Natural Gas Use per Residential Customer")
+
+g <- ggplot(temp, aes(y = use.per.res.customer, x = NAME1)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount of Natural Gas Used by Residential Customers in 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility Name",
+    "Usage (Therm)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r gas_expenditures_residential_state}
+order <-
+  arrange(gas_residential_state, expenditures.per.res.customer)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Natural Gas Expenditures per Residential Customer")
+
+g <-
+  ggplot(gas_residential_state,
+         aes(y = expenditures.per.res.customer, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount Spent on Natural Gas by Residential Customers in 2021 by State",
+    "State",
+    "Expenditures ($)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r gas_expenditures_residential_utility}
+temp <- filter(gas_residential_utility, YEAR == max(gas$YEAR))
+order <- arrange(temp, expenditures.per.res.customer)
+order <- order$NAME1
+
+title <-
+  paste0("Figure ", j, ": Natural Gas Expenditures per Residential Customer")
+
+g <-
+  ggplot(temp, aes(y = expenditures.per.res.customer, x = NAME1)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Amount Spent on Natural Gas by Residential Customers in 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility Name",
+    "Expenditures ($)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r gas_cost_residential_state}
+order <- arrange(gas_residential_state, res.cost.per.therm)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Natural Gas Cost per Therm for Residential Customers")
+
+g <-
+  ggplot(gas_residential_state,
+         aes(y = res.cost.per.therm, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Natural Gas used by Residential Customers in 2021 by State",
+    "State",
+    "Cost ($/Therm)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#F8766D"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r gas_cost_residential_utility}
+temp <- filter(gas_residential_utility, YEAR == max(gas$YEAR))
+order <- arrange(temp, res.cost.per.therm)
+order <- order$NAME1
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Natural Gas Cost per Therm for Residential Customers")
+
+g <- ggplot(temp, aes(y = res.cost.per.therm, x = NAME1)) +
+  geom_bar(stat = "identity", fill = "#F8766D") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Natural Gas Used by Residential Customers in 2021 \nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility Name",
+    "Cost ($/Therm)",
+    "Data Source: EIA-176, 2021",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r gas_cost_residential_utility_long}
+title <-
+  paste0("Figure ",
+         j,
+         ": Natural Gas Cost per Therm\nfor Residential Customers Over Time")
+
+gas_residential_utility[gas_residential_utility$NAME1 == "Wisconsin Public\nService Corporation", "NAME1"] <-
+  "Wisconsin\nPublic\nService\nCorporation"
+gas_residential_utility[gas_residential_utility$NAME1 == "Madison Gas and\nElectric Company\n", "NAME1"] <-
+  "Madison Gas\nand Electric\nCompany\n"
+gas_residential_utility[gas_residential_utility$NAME1 == "Northern States\nPower - Wisconsin", "NAME1"] <-
+  "Northern States\nPower -\nWisconsin"
+gas_residential_utility[gas_residential_utility$NAME1 == "Superior Water, Light\nand Power Company\n", "NAME1"] <-
+  "Superior Water,\nLight and\nPower Company\n"
+gas_residential_utility[gas_residential_utility$NAME1 == "Wisconsin Power\nand Light Company\n", "NAME1"] <-
+  "Wisconsin Power\nand Light\nCompany"
+
+colnames(gas_residential_utility)[which(colnames(gas_residential_utility) == "Utility Name")] <-
+  "Utility.Name"
+colnames(gas_residential_utility)[which(colnames(gas_residential_utility) == "NAME1")] <-
+  "Utility\nName"
+
+gas_residential_utility$YEAR <-
+  mdy(paste0("1/1/", gas_residential_utility$YEAR))
+
+g <-
+  ggplot(
+    gas_residential_utility,
+    aes(
+      y = res.cost.per.therm,
+      x = YEAR,
+      group = `Utility\nName`,
+      color = `Utility\nName`
+    )
+  ) + geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Natural Gas Used by Residential Customers from 1997 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Cost ($/Therm)",
+    "Data Source: EIA-176, 1997 - 2021",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+```{r gas_cost_residential_utility_long_growth}
+title <-
+  paste0("Figure ",
+         j,
+         ": Growth of Natural Gas Cost per Therm\nfor Residential Customers Over Time")
+
+gas_residential_utility_growth <-
+  arrange(gas_residential_utility, YEAR)
+
+for (i in unique(gas_residential_utility_growth$`Utility\nName`)) {
+  temp <- filter(gas_residential_utility_growth, `Utility\nName` == i)
+  base <- temp[1,]$res.cost.per.therm
+  gas_residential_utility_growth[gas_residential_utility_growth$`Utility\nName` == i,]$res.cost.per.therm <-
+    gas_residential_utility_growth[gas_residential_utility_growth$`Utility\nName` == i,]$res.cost.per.therm /
+    base
+}
+
+g <-
+  ggplot(
+    gas_residential_utility_growth,
+    aes(
+      y = res.cost.per.therm,
+      x = YEAR,
+      color = `Utility\nName`,
+      group = `Utility\nName`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Growth of Average Cost of Natural Gas Used by Residential Customers from 1997 to 2021\nfor Publicly-Traded Utilities Operating in Wisconsin",
+    "Year",
+    "Cost (Growth Mutiplier)",
+    "Data Source: EIA-176, 1997 - 2021\nValues are the factor increase in cost, so 1.5 means costs are\n1.5 times higher than they were during the base year",
+    "bottom",
+    90
+  )
+g
+
+j <- j + 1
+```
+
+# Cost Differentials by Sector
+
+## Electricity
+
+```{r electricity_cost_sector_state}
+order <- arrange(fig_elec_cost_state, residential.cost.per.kWh)
+order <- order$State
+
+title <- paste0("Figure ", j, ": Cost of Electricity")
+
+fig_electricity_cost_sector_state$variable <-
+  factor(
+    fig_electricity_cost_sector_state$variable,
+    levels = c(
+      'ind.cost.per.kWh',
+      'com.cost.per.kWh',
+      'residential.cost.per.kWh'
+    )
+  )
+
+hue <- length(unique(fig_electricity_cost_sector_state$variable))
+
+
+g <-
+  ggplot(fig_electricity_cost_sector_state,
+         aes(y = values, x = State, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Cost of Electricity Used in 2021 by Customer Sector and by State",
+    "State",
+    "Cost (Cents/kWh)",
+    "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c(
+      "residential.cost.per.kWh",
+      "com.cost.per.kWh",
+      "ind.cost.per.kWh"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+```{r electricity_cost_sector_utility}
+fig_elec_cost_utility <-
+  filter(fig_elec_cost_utility,
+         `Data Year` == max(fig_elec_cost_utility$`Data Year`))
+order <- arrange(fig_elec_cost_utility, residential.cost.per.kWh)
+order <- order$`Utility\nName`
+
+title <- paste0("Figure ", j, ": Cost of Electricity")
+
+fig_electricity_cost_sector_utility$variable <-
+  factor(
+    fig_electricity_cost_sector_utility$variable,
+    levels = c(
+      "ind.cost.per.kWh",
+      "com.cost.per.kWh",
+      "residential.cost.per.kWh"
+    )
+  )
+
+hue <- length(unique(fig_electricity_cost_sector_utility$variable))
+
+g <-
+  ggplot(
+    fig_electricity_cost_sector_utility,
+    aes(y = values, x = `Utility Name`, fill = variable)
+  ) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average Cost of Electricity Used in 2021 by Customer Sector \nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility Name",
+  "Cost (Cents/kWh)",
+  "Data Source: EIA-861, 2021, Sales to Ultimate Customers",
+  "bottom",
+  0
+)
+g <-
+  format_legend(
+    g,
+    c(
+      "residential.cost.per.kWh",
+      "com.cost.per.kWh",
+      "ind.cost.per.kWh"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+## Natural Gas
+
+```{r gas_cost_sector_state}
+order <- arrange(gas_residential_state, res.cost.per.therm)
+order <- order$State
+
+title <- paste0("Figure ", j, ": Cost of Natural Gas")
+
+fig_gas_cost_sector_state$variable <-
+  factor(
+    fig_gas_cost_sector_state$variable,
+    levels = c(
+      "ind.cost.per.therm",
+      "com.cost.per.therm",
+      "res.cost.per.therm"
+    )
+  )
+
+hue <- length(unique(fig_gas_cost_sector_state$variable))
+
+g <-
+  ggplot(fig_gas_cost_sector_state,
+         aes(y = values, x = State_Name, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average Cost of Electricity Used in 2021 by Customer Sector and by State",
+  "State",
+  "Cost ($/Therm)",
+  "Data Source: EIA-176, 2021",
+  "bottom",
+  0
+)
+g <-
+  format_legend(
+    g,
+    c(
+      "res.cost.per.therm",
+      "com.cost.per.therm",
+      "ind.cost.per.therm"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+```{r gas_cost_sector_utility}
+gas_residential_utility <-
+  filter(gas_residential_utility,
+         YEAR == max(gas_residential_utility$YEAR))
+order <- arrange(gas_residential_utility, res.cost.per.therm)
+order <- order$formatted_names
+
+title <- paste0("Figure ", j, ": Cost of Natural Gas")
+
+fig_gas_cost_sector_utility <-
+  filter(fig_gas_cost_sector_utility, YEAR == max(gas$YEAR))
+
+fig_gas_cost_sector_utility$variable <-
+  factor(
+    fig_gas_cost_sector_utility$variable,
+    levels = c(
+      "ind.cost.per.therm",
+      "com.cost.per.therm",
+      "res.cost.per.therm"
+    )
+  )
+
+hue <- length(unique(fig_gas_cost_sector_utility$variable))
+
+g <-
+  ggplot(fig_gas_cost_sector_utility,
+         aes(y = values, x = NAME1, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <- format_graph(
+  g,
+  title,
+  "Average Cost of Natural Gas Used in 2021 by Customer Sector \nfor Publicly-Traded Utilities Operating in Wisconsin",
+  "Utility Name",
+  "Cost ($/Therm)",
+  "Data Source: EIA-176, 2021",
+  "bottom",
+  0
+)
+g <-
+  format_legend(
+    g,
+    c(
+      "res.cost.per.therm",
+      "com.cost.per.therm",
+      "ind.cost.per.therm"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+
+# Demand-Side Management
+
+## Energy Efficiency
+
+```{r efficiency__cost_per_saving_state}
+temp <-
+  filter(fig_energy_efficiency,
+         `Data Year` == max(fig_energy_efficiency$`Data Year`))
+order <- arrange(temp, cost.per.kWh.savings)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Cost of Savings from Energy Efficiency")
+
+temp$cost.per.kWh.savings <- temp$cost.per.kWh.savings * 100
+
+g <-
+  ggplot(temp, aes(y = cost.per.kWh.savings, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Average Expected Lifetime Dollar Cost per Expected Lifetime Energy Savings \nfrom Utility Energy Efficiency Programs in a State",
+    "State",
+    "Cost (Cents/kWh Saved)",
+    "Data Source: EIA-861, 2021, Energy Efficiency",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r efficiency__cost_per_saving_sector_state}
+temp <-
+  filter(fig_energy_efficiency,
+         `Data Year` == max(fig_energy_efficiency$`Data Year`))
+order <- arrange(temp, desc(State))
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Cost of Savings from Energy Efficiency")
+
+fig_energy_efficiency_sector$variable <-
+  factor(
+    fig_energy_efficiency_sector$variable,
+    levels = c(
+      'cost.per.kWh.savings.ind',
+      'cost.per.kWh.savings.com',
+      'cost.per.kWh.savings.res'
+    )
+  )
+
+hue <- length(unique(fig_energy_efficiency_sector$variable))
+
+g <-
+  ggplot(fig_energy_efficiency_sector,
+         aes(y = values, x = State, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    "Cost of Savings from Energy Efficiency",
+    "Average Expected Lifetime Dollar Cost per Expected Lifetime Energy Savings \nfrom Utility Energy Efficiency Programs in a State by Customer Sector",
+    "State",
+    "Cost ($/kWh saved)",
+    paste0("Data Source: EIA-861, 2021, Energy Efficiency\n Delaware's commercial sector has a value of ", delaware_value, " $/kWh saved."),
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c(
+      "cost.per.kWh.savings.res",
+      "cost.per.kWh.savings.com",
+      "cost.per.kWh.savings.ind"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+```{r efficiency__savings_per_sales_state}
+temp <-
+  filter(fig_efficiency_per_sales,
+         `Data Year` == max(fig_efficiency_per_sales$`Data Year`))
+# usage
+order <- arrange(temp, savings_per_usage)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Energy Efficiency Savings Compared to Total Energy Sales")
+
+g <-
+  ggplot(temp, aes(y = savings_per_usage, x = State, fill = WI)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Annualized Energy Efficiency Program Lifecycle Energy Savings per Total Energy Retail Sales in 2021",
+    "State",
+    "kWh Saved/kWh Sold",
+    "Data Source: EIA-861, 2021, Energy Efficiency",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r efficiency_cost_per_sales_state}
+temp <-
+  filter(fig_efficiency_per_sales,
+         `Data Year` == max(fig_efficiency_per_sales$`Data Year`))
+# revenue
+order <- arrange(temp, savings_cost_per_sales_revenue)
+order <- order$State
+
+title <-
+  paste0("Figure ",
+         j,
+         ": Energy Efficiency Costs Compared to Total Energy Revenues")
+
+g <-
+  ggplot(temp, aes(y = savings_cost_per_sales_revenue, x = State, fill = WI)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Annualized Energy Efficiency Program Lifecycle Cost per Total Energy Retail Sales Revenue in 2021",
+    "State",
+    "$ Spent/$ of Revenue",
+    "Data Source: EIA-861, 2021, Energy Efficiency",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r efficiency_cost_per_saving_long}
+title <-
+  paste0("Figure ", j, ": Cost of Savings from Energy Efficiency Over Time")
+## only Midwest States
+midwest <-
+  c("Minnesota",
+    "Wisconsin",
+    "Illinois",
+    "Iowa",
+    "Indiana",
+    "Michigan")
+fig_efficiency_per_sales <-
+  filter(fig_efficiency_per_sales, State %in% midwest)
+
+g <-
+  ggplot(
+    fig_efficiency_per_sales,
+    aes(
+      y = cost.per.kWh.savings,
+      x = `Data Year`,
+      color = `State`,
+      group = `State`
+    )
+  ) +
+  geom_point() + geom_line()
+g <-
+  format_graph(
+    g,
+    title,
+    "Annualized Energy Efficiency Program Lifecycle Cost per Annualized kWh Saved\nfrom Programs 2013 to 2021 for States in the Midwest",
+    "Year",
+    "Cost of kWh Saved",
+    "Data Source: EIA-861, 2013-2021",
+    "bottom",
+    90
+  )
+g
+```
+
+```{r demand_response_enrolled_state}
+## % of customers enrolled in demand response
+# State
+order <- arrange(demand_response_state, enrolled.per.customer)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Percent of Customers Enrolled in Demand Response")
+
+g <-
+  ggplot(demand_response_state,
+         aes(y = enrolled.per.customer, x = State, fill = WI.x)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Percent of Customers Enrolled in Demand Response Programs in 2021 by State",
+    "State",
+    "Percent of Customers (%)",
+    "Data Source: EIA-861, 2021, Demand Response",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r demand_response_enrolled_utility}
+# % of customers enrolled
+order <- arrange(demand_response_utility, enrolled.per.customer)
+order <- order$`Utility Name`
+
+title <-
+  paste0("Figure ", j, ": Percent of Customers Enrolled in Demand Response")
+
+g <-
+  ggplot(demand_response_utility,
+         aes(y = enrolled.per.customer, x = `Utility Name`)) +
+  geom_bar(stat = "identity",
+           position = position_dodge(),
+           fill = "#009ddc") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Percent of Customers Enrolled in Demand Response Programs in 2021\nfor Publicly−Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Percent of Customers (%)",
+    "Data Source: EIA-861, 2021, Demand Response",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r demand_response_enrolled_sector_state}
+## % of customers enrolled in demand response by sector
+# State
+order <- arrange(demand_response_state_sector, desc(State))
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Percent of Customers enrolled in Demand Response")
+
+demand_response_state_sector$variable <-
+  factor(
+    demand_response_state_sector$variable,
+    levels = c(
+      'enrolled.per.customer.ind',
+      'enrolled.per.customer.com',
+      'enrolled.per.customer.res'
+    )
+  )
+
+hue <- length(unique(demand_response_state_sector$variable))
+
+g <-
+  ggplot(demand_response_state_sector,
+         aes(y = values, x = State, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Percent of Customers of Each Sector Enrolled in Demand Response Programs in 2021 by State",
+    "State",
+    "Percent of Customers (%)",
+    "Data Source: EIA-861, 2021, Demand Response",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c(
+      "enrolled.per.customer.res",
+      "enrolled.per.customer.com",
+      "enrolled.per.customer.ind"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+
+g
+
+j <- j + 1
+```
+
+```{r demand_response_enrolled_sector_utility}
+## % of customers enrolled in demand response by sector
+# Utility
+order <-
+  arrange(demand_response_utility_sector, desc(`Utility Name`))
+order <- order$`Utility Name`
+
+title <-
+  paste0("Figure ", j, ": Percent of Customers Enrolled in Demand Response")
+
+demand_response_utility_sector$variable <-
+  factor(
+    demand_response_utility_sector$variable,
+    levels = c(
+      'enrolled.per.customer.ind',
+      'enrolled.per.customer.com',
+      'enrolled.per.customer.res'
+    )
+  )
+
+hue <- length(unique(demand_response_utility_sector$variable))
+
+g <-
+  ggplot(demand_response_utility_sector,
+         aes(y = values, x = `Utility Name`, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Percent of Customers of Each Sector Enrolled in Demand Response Programs in 2021 \nfor Publicly−Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Percent of Customers (%)",
+    "Data Source: EIA-861, 2021, Demand Response",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c(
+      "enrolled.per.customer.res",
+      "enrolled.per.customer.com",
+      "enrolled.per.customer.ind"
+    ),
+    c("Residential", "Commercial", "Industrial"),
+    hue_pal()(hue),
+    "Sector"
+  )
+g
+
+j <- j + 1
+```
+
+# Generation
+
+```{r generation_source_total_state}
+order <- arrange(fig_generators_state_total, desc(State))
+order <- order$State
+
+title <- paste0("Figure ", j, ": Energy Generation by Source")
+
+fig_generators_state_total$variable <-
+  factor(
+    fig_generators_state_total$variable,
+    levels = c("other", "renewables", "nuclear", "petroleum", "gas", "coal")
+  )
+
+hue <- length(unique(fig_generators_state_total$variable))
+
+g <-
+  ggplot(fig_generators_state_total,
+         aes(y = values, x = State, fill = variable)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Energy Generation by Fuel Source in 2021 for Generators Located within Each State",
+    "State",
+    "TWh",
+    "Data Source: EIA-923, 2021, Schedule 3",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c("coal", "petroleum", "gas", "nuclear", "renewables", "other"),
+    c("Coal", "Petroleum", "Gas", "Nuclear", "Renewables", "Other"),
+    hue_pal()(hue),
+    "Fuel Source"
+  )
+g
+
+j <- j + 1
+```
+
+```{r generation_source_percent_state}
+order <- arrange(fig_generators_state_percent, desc(State))
+order <- order$State
+
+title <- paste0("Figure ", j, ":  Energy Generation by Source")
+
+fig_generators_state_percent$variable <-
+  factor(
+    fig_generators_state_percent$variable,
+    levels = c("other", "renewables", "nuclear", "petroleum", "gas", "coal")
+  )
+
+hue <- length(unique(fig_generators_state_percent$variable))
+
+g <-
+  ggplot(fig_generators_state_percent,
+         aes(y = values, x = State, fill = variable)) +
+  geom_bar(stat = "identity") + scale_x_discrete(limits = order) + coord_flip()
+g <-
+  format_graph(
+    g,
+    "Energy Generation by Source",
+    "Proportion of All Energy Generation from Each Fuel Source in 2021 \nfor Generators Located within Each State",
+    "State",
+    "Percent (%)",
+    "Data Source: EIA-923, 2021, Schedule 3",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c("coal", "petroleum", "gas", "nuclear", "renewables", "other"),
+    c("Coal", "Petroleum", "Gas", "Nuclear", "Renewables", "Other"),
+    hue_pal()(hue),
+    "Fuel Source"
+  )
+g
+
+j <- j + 1
+```
+
+```{r generation_source_total_utility}
+title <- paste0("Figure ", j, ": Energy Generation by Source")
+
+hue <- length(unique(fig_generators_utility_total$variable))
+
+fig_generators_utility_total$variable <-
+  factor(
+    fig_generators_utility_total$variable,
+    levels = c("other", "renewables", "petroleum", "gas", "coal")
+  )
+
+g <-
+  ggplot(fig_generators_utility_total,
+         aes(y = values, x = `.Operator Name`, fill = variable)) +
+  geom_bar(stat = "identity") + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Energy Generation by Fuel Source in 2021 \nfor Generators Owned by Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "GWh",
+    "Data Source: EIA-923, 2021, Schedule 3",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c("coal", "gas", "petroleum", "renewables", "other"),
+    c("Coal", "Gas", "Petroleum", "Renewables", "Other"),
+    hue_pal()(hue),
+    "Fuel Source"
+  )
+g
+
+j <- j + 1
+```
+
+```{r generation_source_percent_utility}
+title <- paste0("Figure ", j, ": Energy Generation by Source")
+
+hue <- length(unique(fig_generators_utility_percent$variable))
+
+fig_generators_utility_percent$variable <-
+  factor(
+    fig_generators_utility_percent$variable,
+    levels = c("other", "renewables", "petroleum", "gas", "coal")
+  )
+
+g <-
+  ggplot(fig_generators_utility_percent,
+         aes(y = values, x = `.Operator Name`, fill = variable)) +
+  geom_bar(stat = "identity") + coord_flip()
+g <-
+  format_graph(
+    g,
+    title,
+    "Proportion of All Energy Generation from Each Fuel Source in 2021 \nfor Generators Owned by Publicly-Traded Utilities Operating in Wisconsin",
+    "Utility",
+    "Percent (%)",
+    "Data Source: EIA-923, 2021, Schedule 3.",
+    "bottom",
+    0
+  )
+g <-
+  format_legend(
+    g,
+    c("coal", "gas", "petroleum", "renewables", "other"),
+    c("Coal", "Gas", "Petroleum", "Renewables", "Other"),
+    hue_pal()(hue),
+    "Fuel Source"
+  )
+g
+
+j <- j + 1
+```
+
+# Emissions
+
+```{r emission_CO2_state}
+# CO2
+order <- arrange(emissions_state, total_CO2)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Total CO2 Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = total_CO2, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "Total CO2 Emissions from Plants Operating in the Electric Power Sector in 2021 by State",
+    "State",
+    "Tons",
+    "Data Source: EIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_SO2_state}
+# SO2
+order <- arrange(emissions_state, total_SO2)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Total SO2 Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = total_SO2, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_NOX_state}
+# NOX
+order <- arrange(emissions_state, total_NOX)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": Total NOx Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = total_NOX, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "Total NOx Emissions Estimated by the EIA \nfor Plants Operating in the Electric Power Sector in 2021 by State",
+    "State",
+    "Tons",
+    "Data Source: EIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_CO2_utility}
+# CO2
+order <- arrange(emissions_utility, total_CO2)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": Total CO2 Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = total_CO2, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "Total CO2 Emissions in 2021 from Plants Operating in the Electric Power Sector \nand Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons",
+    "Data Source: EIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r emission_SO2_utility}
+# SO2
+order <- arrange(emissions_utility, total_SO2)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": Total SO2 Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = total_SO2, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "Total SO2 Emissions Estimated by the EIA in 2021 for Plants Operating in the Electric Power Sector \nand Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons",
+    "Data Source: EIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r emission_NOX_utility}
+# NOX
+order <- arrange(emissions_utility, total_NOX)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": Total NOx Emissions from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = total_NOX, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "Total NOx Emissions Estimated by the EIA in 2021 for Plants Operating in the Electric Power Sector \nand Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons",
+    "Data Source: EIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_CO2_state}
+# CO2
+order <- arrange(emissions_state, CO2_intensity)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": CO2 Emission Intensity of the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = CO2_intensity, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "CO2 Emissions per Energy Outputted for Plants Operating in the Electric Power Sector in 2021 by State",
+    "State",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_SO2_state}
+# SO2
+order <- arrange(emissions_state, SO2_intensity)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": SO2 Emission Intensity of the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = SO2_intensity, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "EIA Estimated SO2 Emissions per Energy Outputted \nfor Plants Operating in the Electric Power Sector in 2021 by State",
+    "State",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_NOX_state}
+# NOX
+order <- arrange(emissions_state, NOX_intensity)
+order <- order$State
+
+title <-
+  paste0("Figure ", j, ": NOx Emission Intensity of the Electric Sector")
+
+g <-
+  ggplot(emissions_state, aes(y = NOX_intensity, x = State, fill = WI)) +
+  geom_bar(stat = "identity") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "EIA Estimated NOx Emissions per Energy Outputted \nfor Plants Operating in the Electric Power Sector in 2021 by State",
+    "State",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g <-
+  format_legend(g,
+                c("TRUE", "FALSE"),
+                c("Wisconsin", "Other"),
+                c("#6a2d91", "#009ddc"),
+                "")
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_CO2_utility}
+# CO2
+order <- arrange(emissions_utility, CO2_intensity)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": CO2 Emission Intensity from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = CO2_intensity, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "CO2 Emissions per Energy Outputted in 2021 from Plants Operating \nin the Electric Power Sector and Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_SO2_utility}
+# SO2
+order <- arrange(emissions_utility, SO2_intensity)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": SO2 Emission Intensity from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = SO2_intensity, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "EIA Estimated SO2 Emissions per Energy Outputted in 2021 from Plants Operating \nin the Electric Power Sector and Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+```{r emission_intensity_NOX_utility}
+# NOX
+order <- arrange(emissions_utility, NOX_intensity)
+order <- order$Utility.Name
+
+title <-
+  paste0("Figure ", j, ": NOx Emission Intensity from the Electric Sector")
+
+g <-
+  ggplot(emissions_utility, aes(y = NOX_intensity, x = Utility.Name)) +
+  geom_bar(stat = "identity", fill = "#009ddc") + coord_flip() + scale_x_discrete(limits = order)
+g <-
+  format_graph(
+    g,
+    title,
+    "EIA Estimated NOx Emissions per Energy Outputted in 2021 from Plants Operating \nin the Electric Power Sector and Owned by a Publicly-Traded Utility Operating in Wisconsin by Utility",
+    "Utility",
+    "Tons per MWh",
+    "Data Sources: EIA-861, 2021, Sales to Ultimate Customers \nEIA Emissions by plant for CO2, SO2, and NOx",
+    "none",
+    0
+  )
+g
+
+j <- j + 1
+```
+
+
+
