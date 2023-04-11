@@ -353,32 +353,48 @@ display: none;
 
 
 <div id="utility-report-card" class="section level1">
-<h1>2023-Utility-Report-Card</h1>
-<p>Basic “report card” for utilities produced annually early in the
-calendar year with data from the calendar year two years prior
-(e.g. 2023 report released in March uses data for the calendar year of
-2021).</p>
-<p>The code and data contained in this github repo are provided to
-encourage transparency and repurposing/modification by other parties to
-match their own purposes.</p>
-<p>Below is a detailed explanation of the data sources used to create
-this document as well as the methodology used to generate the particular
-graphs that use a particular data source. Note that each graph in the
-report contains its data source, allowing anyone to search for the
-relevant section of this readme file.</p>
+<h1>2023 Utility Report Card</h1>
+<p>This document is a basic “report card” for utilities. Our goal is to
+produce the report annually early in the calendar year with data from
+the calendar year two years prior (e.g. 2023 report released in March
+uses data for the calendar year of 2021).</p>
+<p>We included all of the data and code used to generate this report in
+this github repo for the sake of transparency and to encourage other
+parties to repurpose/modify the document to match their own
+purposes.</p>
+<p>Below is a detailed explanation of the data sources that we used to
+create this document as well as the methodology we used to generate the
+graphs, which is organized by data source. Note that each graph in the
+report includes its data source, which should allow anyone to search for
+the relevant section of this ReadMe file.</p>
+<p><strong>RUNNING THE CODE:</strong> First, make sure that you have R
+and RStudio downloaded on your computer: R - <a href="https://cloud.r-project.org/" class="uri">https://cloud.r-project.org/</a> RStudio - <a href="https://posit.co/downloads/" class="uri">https://posit.co/downloads/</a></p>
+<p>The latest version of the report was created using R version 4.2.3
+and RStudio version 2023.03.0 build 386.</p>
+<p>Next, go to our github repository (<a href="https://github.com/CUBWI/2023-Utility-Report-Card" class="uri">https://github.com/CUBWI/2023-Utility-Report-Card</a>) and
+click on the “Code” dropdown menu. You can go through the process of
+setting up Github Desktop if you’d like, but you can also simply clikc
+“Download ZIP.” All of the code and data on our github for this project
+will then download to your computer. Go to your downloads and select the
+ZIP folder and extract its contents. You can then open the “finalized
+code.Rmd” file and click “knit” and it will generate the report.</p>
 <p><strong>DATA SOURCES:</strong></p>
 <p>EIA-176: <a href="https://www.eia.gov/naturalgas/ngqs/" class="uri">https://www.eia.gov/naturalgas/ngqs/</a> (Next to
-“Download,” select “Download entire data to delimited text file.”)</p>
+“Download,” click the furthest right of the three icons - if you float
+your cursor over it it will say “Download entire data to delimited text
+file.”)</p>
 <p>EIA-860: <a href="https://www.eia.gov/electricity/data/eia860/" class="uri">https://www.eia.gov/electricity/data/eia860/</a></p>
 <p>EIA-861: <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a></p>
 <p>EIA-923: <a href="https://www.eia.gov/electricity/data/eia923/" class="uri">https://www.eia.gov/electricity/data/eia923/</a></p>
 <p>EIA Emissions by Plant Estimates: <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a></p>
-<p>Census Heating Fuel Type (B25040): <a href="https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040" class="uri">https://data.census.gov/table?q=heating+source&amp;g=0100000US$0400000&amp;tid=ACSDT5Y2021.B25040</a></p>
+<p>Census Heating Fuel Type (B25040): <a href="https://data.census.gov/table?q=heating+source&amp;g=010XX00US$0400000&amp;tid=ACSDT1Y2021.B25040" class="uri">https://data.census.gov/table?q=heating+source&amp;g=010XX00US$0400000&amp;tid=ACSDT1Y2021.B25040</a>
+(click the CSV icon to download the version that the code is written
+for).</p>
 <p><strong>METHODOLOGY:</strong></p>
 <p><em><strong>EIA-861</strong></em></p>
 <p>Much of the data used in this report come from the Annual Electric
 Power Industry Report, also known as EIA-861. As stated on the EIA
-website, this survey “is a cenus of all United States electric
+website, this survey “is a census of all United States electric
 utilities.” A ZIP file of the data gathered from this survey can be
 downloaded from the eia website at <a href="https://www.eia.gov/electricity/data/eia861/" class="uri">https://www.eia.gov/electricity/data/eia861/</a>. The ZIP
 file contains numerous files containing data on different subjects. Data
@@ -387,129 +403,314 @@ on demand response and energy efficiency programs were taken from the
 SAIFI, and CAIDI metrics were all taken from the “Reliability” file.
 Lastly, the “Sales to Ultimate Customers” provided revenue ($000s),
 energy sales (MWh), and customer numbers disaggregated by sector. All
-data is at the utility level.</p>
+data is at the utility-state level (so if a utility operates in multiple
+states, there are separate rows corresponding to its operations in each
+state).</p>
 <p><strong>Reliability Metrics</strong></p>
 <p><em>Data Description</em></p>
-<p>SAIDI (System Average Interruption Duration Index) and SAIFI (System
-Average Interruption Frequency Index) data are measured directly each
-year and are based on all of the “nonmomentary outages” that occur in a
-year. SAIDI is calculated as the minutes of power outage multiplied by
-the percent of customers in the system that were affected by the outage.
-SAIFI, meanwhile, is simply the percent of customers in the system that
-were affected by the outage. CAIDI (Customer Average Interruption
-Duration Index), in comparison, is derived from the SAIDI and SAIFI
-values using the simple calculation of <span class="math inline">\(\frac{SAIDI}{SAIFI}\)</span>, resulting in the
-total minutes of power outage.</p>
-<p>The metrics are generally further split to account for “Major Event
-Days” (MEDs). Using MEDs is a strategy to account for when a utility’s
-outages are caused by a major event (e.g. an earthquake) that is outside
-of a utility’s control. Therefore, SAIDI without MED, for example, is
-meant to show how reliable a utility is in its day-to-day operations.
-The reliability data also includes columns that give the metrics with
-MEDs and “Minus LOS,” where LOS stands for loss of supply. These “Minus
-LOS” metrics account for when the transmission system fails to deliver
-energy and causes an outage. Transmission systems are often controlled
-by entities other than a local utility, which generally controls the
-distribution system, and so this is again a means of accounting for
-outages that are beyond a utility’s control (a helpful explainer on all
-of these details can be found here: <a href="https://www.youtube.com/watch?v=oVH9L0fCMTU" class="uri">https://www.youtube.com/watch?v=oVH9L0fCMTU</a>).</p>
+<p>Utilities record SAIDI (System Average Interruption Duration Index)
+and SAIFI (System Average Interruption Frequency Index) data for each
+“nonmomentary outage” that occurs on their systems (see below for a
+definition of “nonmomentary”). SAIDI is calculated as the minutes of
+power outage multiplied by the percent of customers in the system that
+were affected by the outage. SAIFI, meanwhile, is simply the percent of
+all customers in the system that were affected by the outage. CAIDI
+(Customer Average Interruption Duration Index), meanwhile, is derived
+from the SAIDI and SAIFI values using the simple calculation of <span class="math inline">\(\frac{SAIDI}{SAIFI}\)</span>, resulting in the
+average minutes of power outages per customer for the outage event.
+These data are submitted to the EIA, which then aggregates cummulatively
+the values into annual figures for each utility-state combination</p>
+<p>The metrics are further split to account for “Major Event Days”
+(MEDs). Using MEDs is a strategy to account for when a utility’s outages
+are caused by a major event (e.g. an earthquake) that is outside of a
+utility’s control. As a result, SAIDI without MED is meant to show how
+reliable a utility is in its day-to-day operations.</p>
+<p>The reliability data also includes columns that give the metrics
+“Minus LOS,” where LOS stands for loss of supply. These “Minus LOS”
+metrics account for when the transmission system fails to deliver energy
+and causes an outage. Transmission systems can be operated by entities
+other than the local utility that controls the distribution system and
+so this is again a means of accounting for outages that are beyond a
+utility’s control (a helpful explainer on all of these details can be
+found here: <a href="https://www.youtube.com/watch?v=oVH9L0fCMTU" class="uri">https://www.youtube.com/watch?v=oVH9L0fCMTU</a>).</p>
 <p><em>Data Quality Considerations</em></p>
 <p>For the reliability metrics, we decided to use only the data that
 corresponded to the “IEEE standard” and we excluded all data that
-corresponded to an “other standard.” This unfortunately excludes Hawaii
-from the state-level charts, since none of the Hawaii utilities
-submitted data under the IEEE standard in 2021. It also excludes
-Wisconsin Power &amp; Light from our Wisconsin IOU charts.</p>
+corresponded to any “other standard.” This unfortunately excludes Hawaii
+from the 2021 state-level charts, since none of the Hawaii utilities
+submitted data under the IEEE standard in 2021.</p>
 <p>We decided to only use IEEE standard data because “other standard”
-data can differ on multiple points that makes it impossible to know
-whether comparisons between data of different standards are valid (we
+data can differ on multiple points that makes it impossible to know how
+exactly to make comparisons between data of different standards (we
 conferred with an “electricity data expert” from the EIA who helped us
-come to this conclusion). One example of a difference between IEEE
-standard data and “other standard” data is the definition of a
-“nonmomentary outage.” Reliability metrics are calculated by only
-considering nonmomentary outages, so this definition is critical. Under
-the IEEE standard, any outage lasting for over five minutes is
-“nonmomentary.” Meanwhile, utilities using alternative standards
-sometimes designate all outages lasting over <strong>one</strong> minute
-as “nonmomentary,” while others use the IEEE five minute threshold, and
-others still simply use an unspecified “other” threshold. There is a
-column included in the reliability data that notes how utilities using
-an “other standard” define momentary outages (less than 1 minute (L),
-less than 5 minutes (F) or ‘other’ (O)), so one could simply look only
-at “other standard” data where a momentary outage is equal to less than
-5 minutes, but there is another important difference between standards
-that would continue to jeopardize valid comparisons.</p>
-<p>The other major way that standards differ, potentially, is in the
-threshold used to define “Major Event Days” (MEDs). The issue is that it
-is impossible to know how exactly a MED threshold has been defined by
-utilities using non-IEEE standards. While the IEEE standard uses the
-past 5 years of data (or as much data as possible if the utility has
-less than 5 years of data), under another standard, more or less data
-may be included which potentially invalidate comparisons between
-“without MEDs” metrics. Beyond the amount of data used, the exact
-equation used to calculate the threshold may differ as well (the
-equation used for the IEEE standard can be found here: <a href="https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf" class="uri">https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf</a>).</p>
+come to this conclusion).</p>
+<p>One example of a difference between IEEE standard data and “other
+standard” data is the definition of a “nonmomentary outage.” Reliability
+metrics are calculated by only considering nonmomentary outages, so this
+definition is critical. Under the IEEE standard, any outage lasting for
+over five minutes is “nonmomentary.” Meanwhile, utilities using
+alternative standards sometimes designate all outages lasting over
+<strong>one</strong> minute as “nonmomentary,” while others use the IEEE
+five minute threshold, and others still simply use an unspecified
+“other” threshold. There is a column included in the reliability data
+that notes how utilities using an “other standard” define momentary
+outages (less than 1 minute (L), less than 5 minutes (F) or ‘other’
+(O)), so one might consider including “other standard” data where a
+momentary outage is equal to less than 5 minutes, but there is at least
+one other important difference between standards that would continue to
+jeopardize clear comparisons.</p>
+<p>The other major way that standards can differ is in the threshold
+used to define “Major Event Days” (MEDs). The EIA data does not explain
+how utilities using non-IEEE standards define their MED thresholds.
+While the IEEE standard uses the past 5 years of data (or as much data
+as possible if the utility has less than 5 years of data), under another
+standard, more or less data may be included. Beyond the amount of data
+used, the exact equation used to calculate the threshold may differ as
+well (the equation used for the IEEE standard can be found here: <a href="https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf" class="uri">https://cmte.ieee.org/pes-drwg/wp-content/uploads/sites/61/2003-01-Major-Events-Classification-v3.pdf</a>).</p>
+The one caveat to our exclusion is that we did choose to include
+Wisconsin Power &amp; Light in our Wisconsin IOU charts despite the fact
+that they rely on an alternative standard for defining a “major event.”
+WP&amp;L is one of the major utilities in Wisconsin, so any chart that
+excluded them would have seemed incomplete. Furthermore, we were able to
+reach out to WP&amp;L directly and were told that the standard that they
+use results in a very similar categorization of “major events” as the
+IEEE standard. WP&amp;L uses the definition of a “Major Event” required
+by the Iowa Utility Board (Iowa’s regulatory commission) and defined in
+Iowa Administrative Code 199 §20.18(4). The statute reads: “‘Major
+event’ will be declared whenever extensive physical damage to
+transmission and distribution facilities has occurred within an electric
+utility’s operating area due to unusually severe and abnormal weather or
+event and:
+<ol>
+<li>
+Wind speed exceeds 90 mph for the affected area, or
+</li>
+<li>
+One-half inch of ice is present and wind speed exceeds 40 mph for the
+affected area, or
+</li>
+<li>
+Ten percent of the affected area total customer count is incurring a
+loss of service for a length of time to exceed five hours, or
+</li>
+<li>
+20,000 customers in a metropolitan area are incurring a loss of service
+for a length of time to exceed five hours.”
+</li>
+</ol>
+<p>Again, we chose to include WP&amp;L’s data despite their using an
+alternative standard because of the assurance by WP&amp;L that their MED
+standard yields similar results to the IEEE standard, the fact that
+WP&amp;L uses the same definition of a nonmomentary outage as the IEEE
+standard, and the importance of presenting data on WP&amp;L due to the
+utility’s size.</p>
+<p><em>Calculating the State-Level Reliability Metrics</em></p>
+<p>Taking an average of or sum of SAIDI, SAIFI, or CAIDI values across
+all of the utilities in a state would lead to a false ranking of the
+states by each metric. Doing so fails to weight the utilities by the
+number of customers served and, relatedly, states with a greater number
+of utilities would have their results inflated.</p>
+<p>Therefore, to come up with the state-level values, the metrics are
+broken down into their components for each utility (e.g. the total
+duration of customer interruptions across customers, the total number of
+customers that had interruptions), these components are then combined
+across the state, and then the metric is recalculated with these
+component parts.</p>
 <p><strong>Sales to Ultimate Customers</strong></p>
-<p>Sales to ultimate customers data is split into 4 different parts, as
-denoted by the “parts” column, corresponding to different levels of
-service that customers receive. Part A corresponds to “full service,”
-which includes both energy and distribution services, Part B to
-corresponds just to energy services, Part C to delivery-only services
+<p>The sales to ultimate customer Excel files have some instructions at
+the bottom of the file for users of the data to correctly aggregate the
+data. We provide some extra details here for additional clarity.</p>
+<p><em>Aggregating the Data Correctly</em></p>
+<p>The first point to be careful of is to exclude “Part C” entries when
+aggregating total customer and total energy sales numbers at the state
+level. Sales to ultimate customers data is split into 4 different parts,
+as denoted by the “parts” column. These parts correspond to different
+levels of service that customers receive. Part A corresponds to “full
+service,” which includes both energy and distribution services, Part B
+to corresponds just to energy services, Part C to delivery-only services
 “and all other charges”, and Part D to “Bundled Service (Energy Service
-Providers and Power Marketers)”. As stated in the instructions for form
-861, the “the amount of electricity sold to customers purchasing
-electricity for their own use and not for resale” is the sum of parts A,
-B, and D. So, for our calculations, which focus on costs to end-users,
-we exclude part C values from consideration. For questions though, that
-use a utility’s total revenues as a comparison point for their
-investments in demand response or energy efficiency, we include Part C
-since excluding it would understate a single utility’s revenues.</p>
+Providers and Power Marketers)”. In states that allow retail choice,
+where a customer can choose who they buy their electricity from, the
+entity providing energy services (Part B) can differ from the entity
+that delivers the services (Part C). But, both entities will report the
+customer as their own and the energy sold/delivered as their own.
+Excluding Part C for the calculating the customer count and the amount
+of energy sold therefore allows us to avoid double-counting when
+aggregating the data to the state level. Part C is included in the
+calculation of costs, however, since we cannot ignore, for example, the
+4 cents/kWh paid for delivery services or the 12 cents/kWh paid for
+energy services.</p>
+<p>Another point to be careful of is that entries with an “Ownership”
+value of “Behind the Meter” should be excluded when calculating
+state-level customer counts. “Behind the”Meter” entries correspond to
+third-party owned solar systems and third-party solar customers
+generally still have a primary energy-service provider. Counting both
+entries, therefore, will double count that customer.</p>
 <p><strong>Energy Efficiency</strong></p>
-<p>One thing to look out for when measuring the energy efficiency
-investments of individual utilities is that in certain instances the
-utility is contributing to energy efficiency programs that are
-administered by another entity. In such an instance, the efficiency
-investments will be reported by and therefore attributed to said program
-administrator, rather than the utility itself. This is the case for
-Wisconsin’s IOUs, which are all statutorily required to contribute to
-the states “Focus on Energy” program, which is administered by Focus on
-Energy (that said, a Wisconsin IOU could, and we would argue that they
-should, invest in energy efficiency beyond the simple statutorily
-required amount).</p>
+<p><em>Investments by an Efficiency Program Administrator</em> One thing
+to look out for when measuring the energy efficiency investments of
+individual utilities is that in certain instances the utility is
+contributing to energy efficiency programs that are administered by
+another entity. In such an instance, the efficiency investments will be
+reported by, and therefore attributed to, said program administrator.
+This is the case for Wisconsin’s IOUs, which are all statutorily
+required to contribute to the states energy efficiency program, which is
+administered by Focus on Energy. A Wisconsin IOU could, and we would
+argue that they should, invest in energy efficiency beyond the simple
+statutorily required amount, but it would be inaccurate to conclude from
+the dataset that they are not investing in efficiency at all.</p>
+<p><em>Annualizing Life Cycle Values Instead of Using Reporting Year
+Incremental Annual Values</em> For our energy efficiency charts, we
+focus on the reported life cycle savings/costs from efficiency programs
+rather than using reporting year incremental annual savings/costs. We do
+this because the costs and savings of a program may not be equal over
+time. For example, a state or utility may seem like a major investor in
+energy efficiency in a particular year when in reality they just
+happened to start multiple programs during that reporting year and all
+of the costs come in the first year of the program.</p>
+<p>Because the lifetime of a single program is the same, when we
+strictly compare costs and savings we do not need to annualize the
+values. This fact is made clear by the following equation: <span class="math display">\[
+\frac{\frac{Costs}{Lifetime}}{\frac{Savings}{Lifetime}} =
+\frac{Costs}{Savings} \]</span></p>
 <p><strong>Demand Response</strong></p>
-<p>We do not have any notes to include on the demand response data.</p>
+<p>Because demand response programs are used primarily to lower the peak
+load of a utility, understanding the proportion of total peak load
+enrolled in demand response programs would be a more effective metric at
+understanding which utilities are successfully using demand response to
+avoid supply-side solutions to load issues. We have not yet explored a
+simple way to access the peak load values utilities around the U.S.,
+though.</p>
+<p>The figure showing demand response program participation rates among
+Wisconsin utilities shows that over 200% of NSPW industrial customers
+participate in demand response programs. We reached out to EIA to ask
+what might be causing the data to indicate a 200% participation rate and
+received several suggestions in response.</p>
+<p>First, NSPW might simply have overcounted. Looking at the text of
+form EIA-861, one customer enrolled in multiple DR programs should still
+be counted as one customer, if you follow the letter of the form, but an
+error could still have been made.</p>
+<p>Second, NSPW could be running DR programs for customers that are not
+retail customers. If NSPW sells energy wholesale to an entity that then
+sells that energy elsewhere, then that customer would not appear in the
+“Sales to Ultimate Customers” file for NSPW, but that customer may still
+participate in a DR program, therefore showing up in the DR data.</p>
+<p>The third suggestion applies much more broadly to EIA 861 data and is
+written out below.</p>
+<p><strong>Issues with Combining Data Across EIA 861
+Sections</strong></p>
+<p>It is often the case, particularly for large utilities, that
+different departments fill out different parts of the 861 survey. The
+definition used for “industrial” by the group that fills out the “Sales
+to Ultimate Customer” section may differ from the group that fills out
+the “Demand Response” section.</p>
+<p>According to the EIA, this issue of differing sector definitions is
+intractable. They stated that “residential” is somewhat easily
+differentiated from “commercial” and “industrial,” but the latter two
+can be difficult to clearly separate.</p>
+<p>Despite the issue outlined above, this report provides sector-level
+charts even when it incorporates data from different sections of EIA 861
+(e.g. the demand response participation charts). Still, we may choose to
+more simply compare residential and non-residential sectors in future
+iterations of the report, following further discussions with the EIA
+data experts.</p>
 <p><em><strong>EIA-176</strong></em></p>
 <p>The second major data source used for this report comes from form
 EIA-176 (“Annual Report of Natural and Supplemental Gas Supply and
-Disposition”). All information on natural gas provided in this report,
-including that on lost gas, and natural gas usage, revenues, and costs
-by sector are derived from the data provided via EIA-176.</p>
+Disposition”). All information on natural gas presented in this report
+are derived from the data provided via EIA-176.</p>
+<p><em>Lost Gas and Unaccounted for Gas</em></p>
+<p>Lost gas is defined as any gas lost as a “natural consequence of
+distribution activities.” In form EIA-176, respondents are requested to
+report their best estimate of this value, meaning that there is a degree
+of error associated with the value.</p>
+<p>This estimate-error helps clarify the difference between “lost gas”
+and “unaccounted for gas.” While “lost gas” is a specific component of
+the “total disposition” (see below) of gas by a respondent, “unaccounted
+for gas” is simply the difference between the reported total supply of
+gas that the respondent took in or started with and the total
+disposition of gas that the respondent distributed out. There are
+multiple figures in EIA-176 that require some degree of estimate from
+the respondent. The “unaccounted for gas” simply shows how these
+estimates were inaccurate in aggregate, but it is impossible to
+attribute the unaccounted for gas to any particular estimate.</p>
+<p>A high value of unaccounted for gas relative to the total amount of
+gas distributed by a respondent could indicate poor book keeping, but it
+does not necessarily carry the same environmental and financial
+implications of lost gas.</p>
 <p><em>Total Disposition</em></p>
 <p>To put the total lost gas value in context, we present a couple of
 figures that show lost gas in proportion to the “total disposition” of
-natural gas. This value corresponds to the amount of natural gas that a
-utility has distributed in the year in question. Other similar reports
-have instead used total sales as the denominator, but we felt that what
-mattered most was the amount of natural gas that a utility was “in
-charge of,” rather than just how much they eventually sell. We
-alternatively could have chosen to use “total supply” as the
-denominator, although in theory total supply and total disposition
-should be equal (“unaccounted for gas” is the metric given for the
-difference between supply and disposition).</p>
+natural gas. The total disposition value corresponds to the amount of
+natural gas that a utility has distributed in the year in question.
+Other reports similar to ours have instead used total sales as the
+denominator, but we felt that what mattered most was the amount of
+natural gas that a utility was “in charge of,” rather than how much is
+eventually sold. With the same logic, one could alternatively choose to
+use “total supply” as the denominator, since in theory total supply and
+total disposition should be equal (“unaccounted for gas” is the metric
+given for the difference between supply and disposition).</p>
+<p><em>Heat Content</em></p>
+<p>As stated in the code, in some instances the EIA-176 data for certain
+respondents lacks an entry for the average heat content of the gas that
+the utility used. Our solution for this is to use a state-average heat
+content instead. This is only a consideration for the utility-level
+charts since a state’s average after filling in empty values with the
+state average would of course just remain the state average.</p>
+<p>We chose to use the median as the average since the distribution of
+heat contents across the utilities in the data was not normal and so we
+did not want to use the mean and allow the average to be skewed by any
+single value. In any case, the difference between using the mean and
+median was marginal.</p>
 <p><em><strong>Other Data Sources</strong></em></p>
 <p>Other than data from form EIA-861 and form EIA-176, this report also
 uses data from <strong>form EIA-860</strong> (“Annual Electric Generator
 Report”) and <strong>form EIA-923</strong> (“Power Plant Operations
 Report”) when discussing the various fuels used for generation by each
-state’s/utility’s generators. Emissions data comes from the EPA, but is
+state’s/utility’s generators.</p>
+<p>The report also uses emissions data that comes from the EPA, but is
 aggregated by EIA and provided at <a href="https://www.eia.gov/electricity/data/emissions/" class="uri">https://www.eia.gov/electricity/data/emissions/</a>. The
-EIA-860 file is used simply to match the plant numbers given in the
-emissions data with the utility that owns the plant.)</p>
+EIA-860 file is used to match the plant numbers given in the emissions
+data with the utility that owns the plant and is also used to attribute
+generation and emissions to the correct party when a plant is owned by
+multiple entities (attributions are by ownership share)..</p>
+<p><strong>Census Data</strong></p>
 <p>Outside of EIA data and the EPA emissions, this report also uses the
 <strong>U.S. Census’ American Community Survey</strong> data to
 calculate the energy source used for heating in households across the
-U.S. Specifically, we look at the 2021 5-year estimate and look at
-question B25040 (“House Heating Fuel”).</p>
+U.S. Specifically, we look at the 2021 1-year estimate and look at
+question B25040 (“House Heating Fuel”)</p>
+<p><em>1-Year vs. 5-Year Estimates</em></p>
+<p>Census.Gov recommends using 1-Year estimates in moments when the
+recency of the data is more important than its precision and when you
+are analyzing larger populations. Because we plan to remake this chart
+annually and because the data is presented for entire state populations,
+we felt that the 1-Year estimate best served our purposes.</p>
+<p><em>Other Heating Fuels</em></p>
+The fuel options that make up the “other heating fuels” category for the
+heating fuels chart include:
+<ul>
+<li>
+“Bottled, tank, or LP gas”
+</li>
+<li>
+“Fuel oil, kerosene, etc.”
+</li>
+<li>
+“Coal or coke”
+</li>
+<li>
+“Wood”
+</li>
+<li>
+“Solar energy”
+</li>
+<li>
+“Other fuel”
+</li>
+</ul>
+<p>As stated in the report, bottled gas and fuel oil are the primary
+components of “other” for most states.</p>
 </div>
 
 
