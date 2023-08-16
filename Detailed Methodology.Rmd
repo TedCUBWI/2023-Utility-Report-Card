@@ -1,0 +1,25 @@
+---
+title: "Methodology"
+output: pdf_document
+date: "2023-02-17"
+---
+
+# Methodology for CUB WI's 2023 Utility Report Card
+
+Much of the data used in this report come from the Annual Electric Power Industry Report, also known as EIA-861. As stated on the EIA website, this survey "is a cenus of all United States electric utilities." A ZIP file of the data gathered from this survey can be downloaded from the eia website at https://www.eia.gov/electricity/data/eia861/. Data on demand response and energy efficiency programs were taken from the "Demand Response" and "Energy Efficiency" files, respectively. SAIDI, SAIFI, and CAIDI metrics were all taken from the "Reliability" file.  Lastly, the "Sales to Ultimate Customers" provided revenue ($000s), energy sales (MWh), and customer numbers disaggregated by sector. 
+
+For the reliability metrics specifically, we decided to incorporate both the data that corresponded to the "IEEE Standard" and the data that corresponded to an "Other Standard." We did this primarily to allow for all 50 states to be included in the results (no Hawaii utilities provided data under the IEEE Standard, so it would have been excluded from all state-level reliability graphs). Using all the data does change the state ranking, but not by much - NY had the biggest shift, moving down 10 spots once all data was included, but only six other states (AL, VA, VT, NH, WI, PA) had shifts of more than three spots. 
+
+One example of a difference between IEEE standard data and "other standard" data is the definition of a "nonmomentary outage." According to the IEEE standard, any outage lasting for over five minutes is "nonmomentary." Meanwhile, utilities using alternative standards sometimes designate all outages lasting over *one* minute as "nonmomentary," while use the IEEE five minute threshold, and others still simply use an unspecified "other" threshold.  
+
+SAIDI (System Average Interruption Duration Index) and SAIFI (System Average Interruption Frequency Index) data are measured directly each year and are based on all of the "nonmomentary outages" that occur in a year. SAIDI is calculated as the minutes of power outage multiplied by the percent of customers in the system that were affected by the outage. SAIFI, meanwhile, is simply the percent of customers in the system that were affected by the outage. CAIDI (Customer Average Interruption Duration Index), in comparison, is derived from the SAIDI and SAIFI values using the simple calculation of $\frac{SAIDI}{SAIFI}$, resulting in the total minutes of power outage. (a helpful explainer on these metrics can be found here: https://www.youtube.com/watch?v=oVH9L0fCMTU)
+
+SAIDI, SAIFI, and CAIDI values can be calculated with or without "Major Event Days" (MEDs) and "Minus Loss of Supply." The latter, which covers when transmission lines fail to provide power, is only available within the IEEE standard, so it is excluded from our analysis. When MEDs are included, all outage data, regardless of cause or severity of the outage, are included. "Without MEDs" values remove any data that come from days on which that day's total SAIDI value is deemed an outlier when compared to a threshold calculated for each state using the previous five-years of SAIDI data in that state. It's important to note that because the previous five years of data are incorporated to come up with the MED threshold, a region that consistently faces poor weather that would otherwise increase outages will be penalized for failing to adapt to their average weather patterns. TKTKT if this is true from the email.   (https://www.youtube.com/watch?v=oVH9L0fCMTU) 
+
+The resulting SAIDI "without MEDs" is meant to showcase how reliable a utilities distribution system is on a "day-to-day" basis. That said, SAIDI with and without MEDs can be correlated. For example, if a hurricane were to cause outages towards the end of a day, the SAIDI value for that day may be low enough for the day to not count as an MED, but the next few days may all be MEDs. 
+
+So, maybe we should provide graphs of without MEDs, too? Or graphs organized by w/o MED with an x axis cutoff that makes it easier to read? 
+
+The second major datasource for this report is form EIA-176 ("Annual Report of Natural and Supplemental Gas Supply and Disposition"). All information on natural gas provided in this report, including that on lost gas, and natural gas usage, revenues, and costs by sector are derived from the data provided via EIA-176. 
+
+Outside of EIA data, this report also uses the U.S. Census' American Community Survey data (https://data.census.gov/table?q=heating+source&g=0100000US$0400000&tid=ACSDT5Y2021.B25040) to calculate the energy source used for heating in households across the U.S. 

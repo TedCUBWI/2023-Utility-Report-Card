@@ -114,6 +114,8 @@ Despite the issue outlined above, this report provides sector-level charts even 
 
 The second major data source used for this report comes from form EIA-176 ("Annual Report of Natural and Supplemental Gas Supply and Disposition"). All information on natural gas presented in this report are derived from the data provided via EIA-176.
 
+Regarding the data file actually provided on GitHub, to allow for the file to be pushed to GitHub I removed the first couple of sheets (to get it below 100MB in size). If you would like to run analyses going back to 1997 you can use the URL at the top of the file to get the original data. 
+
 **Lost Gas and Unaccounted for Gas**
 
 Lost gas is defined as any gas lost as a "natural consequence of distribution activities." In form EIA-176, respondents are requested to report their best estimate of this value, meaning that there is a degree of error associated with the value.
