@@ -16,13 +16,7 @@ Next, go to our github repository (<https://github.com/CUBWI/2023-Utility-Report
 
 EIA-176: <https://www.eia.gov/naturalgas/ngqs/> (Next to "Download," click the furthest right of the three icons - if you float your cursor over it it will say "Download entire data to delimited text file.")
 
-EIA-860: <https://www.eia.gov/electricity/data/eia860/>
-
 EIA-861: <https://www.eia.gov/electricity/data/eia861/>
-
-EIA-923: <https://www.eia.gov/electricity/data/eia923/>
-
-EIA Emissions by Plant Estimates: <https://www.eia.gov/electricity/data/emissions/>
 
 Census Heating Fuel Type (B25040): <https://data.census.gov/table?q=heating+source&g=010XX00US$0400000&tid=ACSDT1Y2021.B25040> (click the CSV icon to download the version that the code is written for).
 
@@ -102,7 +96,7 @@ Because demand response programs are used primarily to lower the peak load of a 
 
 First, NSPW might simply have overcounted. Looking at the text of form EIA-861, one customer enrolled in multiple DR programs should still be counted as one customer, if you follow the letter of the form, but an error could still have been made.
 
-Second, NSPW could be running DR programs for customers that are not retail customers. If NSPW sells energy wholesale to an entity that then sells that energy elsewhere, then that customer would not appear in the "Sales to Ultimate Customers" file for NSPW, but that customer may still participate in a DR program run by NSPW, therefore showing up in its DR data. This would not explain the massive overcounting, but is still a potential source for error to consider.
+Second, NSPW could be running DR programs for customers that are not retail customers. If NSPW sells energy wholesale to an entity that then sells that energy elsewhere, then that customer would not appear in the "Sales to Ultimate Customers" file for NSPW, but that customer may still participate in a DR program run by NSPW, therefore showing up in its DR data. This would not seem to explain the massive overcounting, but is still a potential source for error to consider.
 
 The third suggestion applies much more broadly to EIA 861 data and is written out below.
 
@@ -134,7 +128,7 @@ To put the total lost gas value in context, we present a couple of figures that 
 
 **Heat Content**
 
-As stated in the code, in some instances the EIA-176 data for certain respondents lacks an entry for the average heat content of the gas that the utility used. Our solution for this is to use a state-average heat content instead. This is only a consideration for the utility-level charts since a state's average after filling in empty values with the state average would of course just remain the state average.
+As stated in the code, in some instances the EIA-176 data for certain respondents lacks an entry for the average heat content of the gas that the utility used. Our solution for this is to use a state-average heat content instead. This allows us to discuss gas usage with the more well-used units of therms or MMBTUs rather than cubic feet.
 
 We chose to use the median as the average since the distribution of heat contents across the utilities in the data was not normal and so we did not want to use the mean and allow the average to be skewed by any single value. In any case, the difference between using the mean and median was marginal.
 
@@ -188,7 +182,7 @@ The question asked of survey respondents is "Which FUEL is used MOST for heating
 
 *1-Year vs. 5-Year Estimates*
 
-Census.Gov recommends using 1-Year estimates in moments when the recency of the data is more important than its precision and when you are analyzing larger populations. Because we plan to remake this chart annually and because the data is presented for entire state populations, we felt that the 1-Year estimate best served our purposes.
+Census.Gov recommends using 1-Year estimates in moments when the recency of the data is more important than its precision and when you are analyzing larger populations. Because we plan to remake this chart annually and because the data are presented at the state population level, we felt that the 1-Year estimate best served our purposes.
 
 *Other Heating Fuels*
 
@@ -211,3 +205,57 @@ The fuel options that make up the "other heating fuels" category for the heating
 </ul>
 
 As stated in the report, bottled gas and fuel oil are the primary components of "other" for most states.
+
+**Generation and Emissions Data**
+
+Our report does not include data on the generation mix that states or utilities rely upon and does not include any data regarding the emissions associated with energy use. 
+
+*Using EIA 860 and EIA 923 Data*
+
+We had originally hoped to use EIA 860 (https://www.eia.gov/electricity/data/eia860/), EIA 923 (https://www.eia.gov/electricity/data/eia923/), and plant-level emissions data (https://www.eia.gov/electricity/data/emissions/) to illustrate generation mix and emissions associated with energy demand. This remains, as far as we know, the best EIA data to use to come up with an estimate of emissions associated with individual utilities.
+
+There are two sources of error that led us to lose confidence in this strategy. First, using these three sources excludes any data on Power Purchasing Agreements, where a utility purchases power from a generator somewhere. For example, in Wisconsin, the Wisconsin Electric Power Company currently buys a large amount of electricity from the Point Beach Nuclear Plant, which is owned and operated by NextEra Energy. This relationship and any similar relationships are not captured by any EIA data, meaning large portions of a utilities portfolio would be omitted. 
+
+Second, in some instances a plant would be attributed to a utility's subsidiary rather than to the utility itself. For example, according to EIA-860's "Generator Ownership" data, the Elm Road Generating Station is co-owned by Madison Gas & Electric, WPPI Energy, and We Power. We Power is a subsidiary of the Wisconsin Electric Power Company (WEPCO). We need to know that subsidiary relationship ahead of time to ensure that our code accurately attributes the generation and emissions associated with the plant to WEPCO. Otherwise it just assumes that We Power is one of the smaller utilities that we've chosen not to include in our charts. We could catch issues like these on a one off basis, but our goal is to create a fully automatable process. Given these two issues, we decided the resulting charts were not providing accurate enough information to present publicly. 
+
+*Best Data for State Level Generation*
+
+According to EIA staff, the best data to use to answer generation mix and emission questions at the state level is from the State Electricity Profile data (available here: https://www.eia.gov/electricity/state/). We will look to use this data to present charts in future iterations of this report but were unable to do so in time for the release of the current report. 
+
+*Details of the Original Process*
+
+We include the details from our original attempts to create these graphs in case anyone feels that there is value in the more specific result of generation mix/emissions specifically from plants **owned** by utilities. There are some peculiarities to the EIA 923 and EIA 860 data so hopefully this can help yield the results users are looking for. 
+
+**Form EIA-923** Form EIA-923 ("Power Plant Operations Report") provides data on the amount of generation from different plants in the U.S., the owners of the plant, and the fuel that the plant uses.
+
+In particular, the file to use is the one that includes schedules 2, 3, 4, and 5 (e.g. "EIA923_Schedules_2\_3_4\_5_M\_12_2021_Final.xlsx").
+
+Only EIA sectors numbers 1, 2, and 3, are included for the calculations of generation and emissions from utilities. The EIA Sector Numbers are organized as follows:
+
+<ol>
+
+<li>Electric Utility</li>
+
+<li>NAICS-22 Non-Cogen</li>
+
+<li>NAICS-22 Cogen</li>
+
+<li>Commercial NAICS Non-Cogen</li>
+
+<li>Commercial NAICS Cogen</li>
+
+<li>Industrial NAICS Non-Cogen</li>
+
+<li>Industrial NAICS Cogen</li>
+
+</ol>
+
+The NAICS two digit code "22" corresponds to utilities. So in addition to "Electric Utility" any generation or emissions associated with a NAICS-22 entity was also included in the calculations (Appendix C to "Electric Power Monthly" confirms that Sectors 1, 2, and 3 make up the "Electric Power Sector": <https://www.eia.gov/electricity/monthly/pdf/technotes.pdf>)
+
+**Emissions Data** Plant-level emissions data is provided at <https://www.eia.gov/electricity/data/emissions/>.
+
+Note that sectors include the "ELECTRIC POWER," "COMMERCIAL," and "INDUSTRIAL" sectors and so the latter two should be excluded for just looking at utility emissions. 
+
+**Form EIA-860** Form EIA-860 ("Annual Electric Generator Report") provides a crosswalk file to know what plants in the U.S. are owned by which utility. This information can be used to match the plant numbers given in the emissions data with the utility that owns the plant.
+
+EIA-860's ownership data is also helpful for attributing generation and emissions to the correct party when a plant is owned by multiple entities (attributions can be made by ownership share).
